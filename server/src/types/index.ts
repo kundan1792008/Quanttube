@@ -105,6 +105,7 @@ export interface CreateReelShareRequest {
   groupId: string;
   sharedBy: string;
   memberIds: string[];
+  pressureWindowSeconds?: number;
 }
 
 /** Request payload to track deep-link click events. */

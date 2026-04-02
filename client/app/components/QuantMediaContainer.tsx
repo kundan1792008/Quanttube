@@ -22,9 +22,17 @@ export default function QuantMediaContainer() {
   const [shareData, setShareData] = useState<ReelShareResponse | null>(null);
   const [dashboard, setDashboard] = useState<AvatarDashboardState[]>([]);
 
-  const groupId = "group-alpha";
-  const sharedBy = "member-owner";
-  const memberIds = ["member-a", "member-b", "member-c"];
+  const apiBaseUrl = process.env.NEXT_PUBLIC_QUANTTUBE_API_BASE_URL ?? "http://localhost:4000";
+  const groupId = process.env.NEXT_PUBLIC_QUANTCHAT_GROUP_ID ?? "group-alpha";
+  const sharedBy = process.env.NEXT_PUBLIC_QUANTCHAT_MEMBER_ID ?? "member-owner";
+  const memberIds = useMemo(
+    () =>
+      (process.env.NEXT_PUBLIC_QUANTCHAT_MEMBER_IDS ?? "member-a,member-b,member-c")
+        .split(",")
+        .map((member) => member.trim())
+        .filter(Boolean),
+    []
+  );
 
   const spectrumConfig = useMemo(
     () =>
@@ -39,7 +47,7 @@ export default function QuantMediaContainer() {
 
   async function refreshDashboard() {
     try {
-      const response = await fetch(`http://localhost:4000/api/reels/quantsink/${groupId}/avatars`);
+      const response = await fetch(`${apiBaseUrl}/api/reels/quantsink/${groupId}/avatars`);
       if (!response.ok) return;
       const payload = (await response.json()) as AvatarDashboardState[];
       setDashboard(payload);
@@ -52,7 +60,7 @@ export default function QuantMediaContainer() {
     setShareLoading(true);
     setShareError(null);
     try {
-      const response = await fetch("http://localhost:4000/api/reels/share", {
+      const response = await fetch(`${apiBaseUrl}/api/reels/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -70,7 +78,7 @@ export default function QuantMediaContainer() {
       setShareData(payload as ReelShareResponse);
       await refreshDashboard();
     } catch {
-      setShareError("Backend unavailable at http://localhost:4000");
+      setShareError(`Backend unavailable at ${apiBaseUrl}`);
     } finally {
       setShareLoading(false);
     }
@@ -79,7 +87,7 @@ export default function QuantMediaContainer() {
   async function simulateMemberClick(memberId: string, platform: "ios" | "android" | "web") {
     if (!shareData) return;
     try {
-      await fetch(`http://localhost:4000/api/reels/share/${shareData.shareId}/click`, {
+      await fetch(`${apiBaseUrl}/api/reels/share/${shareData.shareId}/click`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ memberId, platform }),

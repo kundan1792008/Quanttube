@@ -175,9 +175,15 @@ export function listDubbingJobs(sessionId?: string): DubbingJob[] {
 // ---------------------------------------------------------------------------
 
 const FOMO_WINDOW_MS = 5 * 60 * 1000;
+const DEFAULT_FOMO_WINDOW_SECONDS = 300;
 
 function toIso(ms: number): string {
   return new Date(ms).toISOString();
+}
+
+function formatPressureWindow(seconds: number): string {
+  if (seconds % 60 === 0) return `${seconds / 60} minute${seconds / 60 === 1 ? "" : "s"}`;
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
 }
 
 function computeAvatarState(share: ReelShare, member: GroupMemberShareState): AvatarPressureState {
@@ -198,7 +204,7 @@ function buildDeepLinks(shareId: string): Record<DeepLinkPlatform, string> {
 
 /** Create a Quantchat reel share wrapped in a FOMO payload. */
 export function createReelShare(payload: CreateReelShareRequest): ReelShare | { error: string } {
-  const { reelId, groupId, sharedBy, memberIds } = payload;
+  const { reelId, groupId, sharedBy, memberIds, pressureWindowSeconds } = payload;
   if (!reelId || !groupId || !sharedBy) {
     return { error: "reelId, groupId and sharedBy are required" };
   }
@@ -219,15 +225,22 @@ export function createReelShare(payload: CreateReelShareRequest): ReelShare | { 
     return { error: "memberIds must contain at least one non-empty member id" };
   }
 
+  const requestedWindowSeconds =
+    typeof pressureWindowSeconds === "number" ? pressureWindowSeconds : DEFAULT_FOMO_WINDOW_SECONDS;
+  if (!Number.isFinite(requestedWindowSeconds) || requestedWindowSeconds <= 0) {
+    return { error: "pressureWindowSeconds must be a positive number when provided" };
+  }
+
+  const fomoWindowMs = Math.floor(requestedWindowSeconds * 1000);
   const nowMs = Date.now();
   const shareId = uuidv4();
-  const triggerAt = nowMs + FOMO_WINDOW_MS;
+  const triggerAt = nowMs + fomoWindowMs;
   const fomoPayload: FomoPayload = {
     label: "FOMO_PAYLOAD",
-    pressureWindowSeconds: 300,
+    pressureWindowSeconds: Math.floor(requestedWindowSeconds),
     triggerAt: toIso(triggerAt),
-    expiresAt: toIso(triggerAt),
-    message: "Open this reel in 5 minutes or your Quantsink avatar turns gray temporarily.",
+    expiresAt: toIso(triggerAt + FOMO_WINDOW_MS),
+    message: `Open this reel in ${formatPressureWindow(Math.floor(requestedWindowSeconds))} or your Quantsink avatar turns gray temporarily.`,
   };
 
   const share: ReelShare = {
