@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { use, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import SmartTranscript from "../../components/SmartTranscript";
@@ -14,7 +14,8 @@ const LANGUAGES = [
 
 type DubbingState = "idle" | "cloning" | "done";
 
-export default function WatchPage({ params }: { params: { id: string } }) {
+export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [selectedLang, setSelectedLang] = useState("English");
   const [dubbingState, setDubbingState] = useState<DubbingState>("idle");
   const [showPaywall, setShowPaywall] = useState(false);
@@ -175,7 +176,7 @@ export default function WatchPage({ params }: { params: { id: string } }) {
 
           {/* Sidebar – Smart Transcript */}
           <div className="lg:col-span-1">
-            <SmartTranscript videoId={params.id} />
+            <SmartTranscript videoId={id} />
           </div>
         </div>
       </div>
