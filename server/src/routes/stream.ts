@@ -36,6 +36,7 @@ const BITRATE_LADDER = [
   { resolution: "audio", bitrate: 128,   codec: "aac"  },
 ] as const;
 const AUDIO_ONLY_TIER = BITRATE_LADDER[BITRATE_LADDER.length - 1];
+const CDN_BASE_URL = process.env.CDN_BASE_URL ?? "https://cdn.quanttube.app";
 
 /**
  * Select a bitrate tier based on engagement score.
@@ -99,7 +100,7 @@ router.get("/:mediaId", (req: Request, res: Response) => {
     mediaId,
     userId: userId ?? null,
     selectedTier: tier,
-    hlsManifestUrl: `https://cdn.quanttube.app/hls/${encodeURIComponent(mediaId)}/${tier.resolution}/master.m3u8`,
+    hlsManifestUrl: `${CDN_BASE_URL}/hls/${encodeURIComponent(mediaId)}/${tier.resolution}/master.m3u8`,
     allTiers: BITRATE_LADDER,
     engagementScore,
     mode: mode ?? "cinema",
