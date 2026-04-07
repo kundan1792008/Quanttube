@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { z } from "zod";
 import {
   createSession,
   getSession,
@@ -7,25 +8,44 @@ import {
   listSessions,
   extractAudioBuffer,
 } from "../services";
-import { PlaybackMode, CreateSessionRequest, TransitionModeRequest } from "../types";
+import { PlaybackMode } from "../types";
 
 const router = Router();
+
+// ---------------------------------------------------------------------------
+// Zod schemas
+// ---------------------------------------------------------------------------
+
+const CreateSessionSchema = z.object({
+  streamUrl: z.string().url("streamUrl must be a valid URL"),
+  mode: z
+    .enum(Object.values(PlaybackMode) as [PlaybackMode, ...PlaybackMode[]])
+    .optional(),
+});
+
+const TransitionModeSchema = z.object({
+  mode: z.enum(Object.values(PlaybackMode) as [PlaybackMode, ...PlaybackMode[]], {
+    error: () => ({
+      message: `mode is required and must be one of: ${Object.values(PlaybackMode).join(", ")}`,
+    }),
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
 
 /**
  * POST /api/sessions
  * Create a new media session that intercepts a video stream.
  */
 router.post("/", (req: Request, res: Response) => {
-  const { streamUrl, mode } = req.body as CreateSessionRequest;
-  if (!streamUrl || typeof streamUrl !== "string") {
-    res.status(400).json({ error: "streamUrl is required" });
+  const parse = CreateSessionSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: parse.error.issues[0]?.message });
     return;
   }
-  const validModes = Object.values(PlaybackMode) as string[];
-  if (mode && !validModes.includes(mode)) {
-    res.status(400).json({ error: `Invalid mode. Must be one of: ${validModes.join(", ")}` });
-    return;
-  }
+  const { streamUrl, mode } = parse.data;
   const session = createSession(streamUrl, mode);
   res.status(201).json(session);
 });
@@ -59,13 +79,12 @@ router.get("/:id", (req: Request, res: Response) => {
  * render is dropped but OTT cache is preserved.
  */
 router.patch("/:id/mode", (req: Request, res: Response) => {
-  const { mode } = req.body as TransitionModeRequest;
-  const validModes = Object.values(PlaybackMode) as string[];
-  if (!mode || !validModes.includes(mode)) {
-    res.status(400).json({ error: `mode is required and must be one of: ${validModes.join(", ")}` });
+  const parse = TransitionModeSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: parse.error.issues[0]?.message });
     return;
   }
-  const session = transitionMode(req.params.id, mode);
+  const session = transitionMode(req.params.id, parse.data.mode);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { z } from "zod";
 import {
   createReelShare,
   getReelShare,
@@ -6,21 +7,50 @@ import {
   registerReelShareClick,
   getAvatarDashboardStates,
 } from "../services";
-import {
-  CreateReelShareRequest,
-  RegisterDeepLinkClickRequest,
-  DeepLinkPlatform,
-} from "../types";
+import { DeepLinkPlatform } from "../types";
 
 const router = Router();
+
+// ---------------------------------------------------------------------------
+// Zod schemas
+// ---------------------------------------------------------------------------
+
+const CreateReelShareSchema = z.object({
+  reelId: z.string().min(1, "reelId is required"),
+  groupId: z.string().min(1, "groupId is required"),
+  sharedBy: z.string().min(1, "sharedBy is required"),
+  memberIds: z.array(z.string()).min(1, "memberIds must contain at least one member"),
+  pressureWindowSeconds: z.number().positive().optional(),
+});
+
+const RegisterClickSchema = z.object({
+  memberId: z.string().min(1, "memberId is required"),
+  platform: z.enum(Object.values(DeepLinkPlatform) as [DeepLinkPlatform, ...DeepLinkPlatform[]], {
+    error: () => ({
+      message: `platform must be one of: ${Object.values(DeepLinkPlatform).join(", ")}`,
+    }),
+  }),
+});
+
+const ListSharesQuerySchema = z.object({
+  groupId: z.string().optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
 
 /**
  * POST /api/reels/share
  * Share a Quanttube reel into a Quantchat group with a FOMO payload.
  */
 router.post("/share", (req: Request, res: Response) => {
-  const payload = req.body as CreateReelShareRequest;
-  const result = createReelShare(payload);
+  const parse = CreateReelShareSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: parse.error.issues[0]?.message });
+    return;
+  }
+  const result = createReelShare(parse.data);
   if ("error" in result) {
     res.status(400).json(result);
     return;
@@ -33,8 +63,12 @@ router.post("/share", (req: Request, res: Response) => {
  * List reel shares, optionally filtered by groupId.
  */
 router.get("/share", (req: Request, res: Response) => {
-  const groupId = req.query.groupId as string | undefined;
-  res.json(listReelShares(groupId));
+  const parse = ListSharesQuerySchema.safeParse(req.query);
+  if (!parse.success) {
+    res.status(400).json({ error: parse.error.issues[0]?.message });
+    return;
+  }
+  res.json(listReelShares(parse.data.groupId));
 });
 
 /**
@@ -73,8 +107,12 @@ router.get("/share/:shareId/deep-link/:platform", (req: Request, res: Response) 
  * Register that a member clicked the native deep-link.
  */
 router.post("/share/:shareId/click", (req: Request, res: Response) => {
-  const payload = req.body as RegisterDeepLinkClickRequest;
-  const result = registerReelShareClick(req.params.shareId, payload);
+  const parse = RegisterClickSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: parse.error.issues[0]?.message });
+    return;
+  }
+  const result = registerReelShareClick(req.params.shareId, parse.data);
   if ("error" in result) {
     if (result.error === "Reel share not found") {
       res.status(404).json(result);

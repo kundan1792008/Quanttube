@@ -16,3 +16,11 @@ export {
   _resetStores,
 } from "./engine";
 export type { AudioBufferResponse } from "./engine";
+
+export {
+  ingestSignal,
+  getRecommendation,
+  getSignalsForUser,
+  _resetTelepathicFeed,
+} from "./telepathic-feed";
+export type { CrossAppSignal, CrossAppSignalType, MediaRecommendation } from "./telepathic-feed";

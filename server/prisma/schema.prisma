@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String?
+  image     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  channels  Channel[]
+  comments  Comment[]
+}
+
+model Creator {
+  id              String      @id @default(uuid())
+  quantmailId     String      @unique
+  displayName     String
+  bio             String?
+  avatarUrl       String?
+  subscriberCount Int         @default(0)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  videos      Video[]
+  audioTracks AudioTrack[]
+
+  @@map("creators")
+}
+
+model Channel {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id])
+  videos      Video[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Video {
+  id           String         @id @default(uuid())
+  creatorId    String?
+  creator      Creator?       @relation(fields: [creatorId], references: [id])
+  channelId    String?
+  channel      Channel?       @relation(fields: [channelId], references: [id])
+  title        String
+  description  String?
+  hlsUrl       String?
+  url          String?
+  thumbnailUrl String?
+  durationSecs Int?
+  viewCount    Int            @default(0)
+  isPublished  Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  audioTrack   AudioTrack?
+  watchHistory WatchHistory[]
+  comments     Comment[]
+  transcripts  Transcript[]
+
+  @@index([channelId])
+  @@index([creatorId])
+  @@map("videos")
+}
+
+model AudioTrack {
+  id           String    @id @default(uuid())
+  creatorId    String
+  creator      Creator   @relation(fields: [creatorId], references: [id])
+  videoId      String?   @unique
+  video        Video?    @relation(fields: [videoId], references: [id])
+  title        String
+  format       String    @default("opus")
+  sampleRate   Int       @default(48000)
+  channels     Int       @default(2)
+  durationSecs Int
+  streamUrl    String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("audio_tracks")
+}
+
+model WatchHistory {
+  id                String             @id @default(uuid())
+  userId            String
+  videoId           String
+  video             Video              @relation(fields: [videoId], references: [id])
+  watchedSeconds    Int                @default(0)
+  completed         Boolean            @default(false)
+  playbackMode      String             @default("cinema")
+  engagementScore   Float              @default(0)
+  watchedAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  microInteractions MicroInteraction[]
+
+  @@index([userId])
+  @@index([videoId])
+  @@map("watch_history")
+}
+
+model MicroInteraction {
+  id             String       @id @default(uuid())
+  watchHistoryId String
+  watchHistory   WatchHistory @relation(fields: [watchHistoryId], references: [id])
+  userId         String
+  eventType      String
+  scrollSpeed    Float?
+  pausedAtSecs   Int?
+  seekFromSecs   Int?
+  seekToSecs     Int?
+  metadata       Json?
+  occurredAt     DateTime     @default(now())
+
+  @@index([userId])
+  @@index([watchHistoryId])
+  @@map("micro_interactions")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Transcript {
+  id        String   @id @default(uuid())
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id])
+  language  String   @default("en")
+  content   String
+  chapters  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

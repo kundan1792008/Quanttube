@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "copilot/**"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Server – lint, build, test
+  # ---------------------------------------------------------------------------
+  server:
+    name: Server (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: ["22.x"]
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build (TypeScript)
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  # Client – lint, build
+  # ---------------------------------------------------------------------------
+  client:
+    name: Client (Next.js)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: "npm"
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          # Needed for Next.js standalone build to succeed without a real backend
+          NEXT_PUBLIC_QUANTTUBE_API_BASE_URL: http://localhost:4000
+          NEXT_PUBLIC_QUANTCHAT_GROUP_ID: group-alpha
+          NEXT_PUBLIC_QUANTCHAT_MEMBER_ID: member-owner
+          NEXT_PUBLIC_QUANTCHAT_MEMBER_IDS: member-a,member-b,member-c
