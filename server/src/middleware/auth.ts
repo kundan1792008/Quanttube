@@ -4,6 +4,7 @@ import logger from "../logger";
 
 const QUANTMAIL_JWT_SECRET = process.env.QUANTMAIL_JWT_SECRET;
 const QUANTMAIL_ISSUER = process.env.QUANTMAIL_ISSUER ?? "quantmail";
+const QUANTMAIL_AUDIENCE = process.env.QUANTMAIL_AUDIENCE;
 
 export interface QuantmailJwtPayload {
   sub: string;          // Quantmail user ID (biometric SSO subject)
@@ -52,6 +53,8 @@ export function requireQuantmailAuth(
 
   try {
     const payload = jwt.verify(token, QUANTMAIL_JWT_SECRET, {
+      algorithms: ["HS256"],
+      audience: QUANTMAIL_AUDIENCE,
       issuer: QUANTMAIL_ISSUER,
     }) as QuantmailJwtPayload;
 

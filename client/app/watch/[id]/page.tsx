@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import SmartTranscript from "../../components/SmartTranscript";
 import PremiumPaywall from "../../components/PremiumPaywall";
+import QuantMediaContainer from "../../components/QuantMediaContainer";
+import { MediaProvider } from "../../context/MediaContext";
 
 const LANGUAGES = [
   "English", "Japanese", "Spanish", "French", "German",
@@ -179,6 +181,18 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
             <SmartTranscript videoId={id} />
           </div>
         </div>
+
+        <section className="mt-10 space-y-4">
+          <div>
+            <h2 className="text-xl font-bold text-white/80">Format Shift Engine</h2>
+            <p className="text-sm text-white/40">
+              Switch this session between cinema, short-reel, and audio-only layouts.
+            </p>
+          </div>
+          <MediaProvider>
+            <QuantMediaContainer />
+          </MediaProvider>
+        </section>
       </div>
 
       <AnimatePresence>

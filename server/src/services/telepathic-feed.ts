@@ -32,7 +32,7 @@ export interface CrossAppSignal {
   signalType: CrossAppSignalType;
   /** Arbitrary signal-specific metadata (e.g. destination city for flights). */
   payload: Record<string, unknown>;
-  occurredAt: string;      // ISO-8601, validated at the API layer before ingestion
+  occurredAt: string;      // ISO-8601 when provided; otherwise defaulted during API ingestion
 }
 
 // ---------------------------------------------------------------------------

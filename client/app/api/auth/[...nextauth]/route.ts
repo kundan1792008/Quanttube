@@ -18,6 +18,10 @@ if (googleClientId && googleClientSecret) {
   providers.push(Google({ clientId: googleClientId, clientSecret: googleClientSecret }));
 }
 
+if (providers.length === 0 && process.env.NODE_ENV !== "development") {
+  console.warn("NextAuth is running without configured OAuth providers.");
+}
+
 const { handlers } = NextAuth({
   providers,
 });
