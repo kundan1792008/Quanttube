@@ -163,6 +163,28 @@ function ensureDir(dir: string): void {
   }
 }
 
+/**
+ * Sanitize a path component (videoId or jobId) so it cannot contain
+ * path traversal sequences.  Keeps alphanumerics, hyphens and underscores.
+ */
+function sanitizePathComponent(component: string): string {
+  return component.replace(/[^a-zA-Z0-9\-_]/g, "_");
+}
+
+/**
+ * Resolve an output path and verify it stays within the allowed output root.
+ * Throws if the resolved path escapes the root (directory traversal).
+ */
+function safeOutputPath(root: string, ...segments: string[]): string {
+  const sanitized = segments.map(sanitizePathComponent);
+  const resolved = path.resolve(root, ...sanitized);
+  const resolvedRoot = path.resolve(root);
+  if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+    throw new Error(`Path traversal detected: ${resolved} is outside ${resolvedRoot}`);
+  }
+  return resolved;
+}
+
 // ---------------------------------------------------------------------------
 // ffmpeg command builders
 // ---------------------------------------------------------------------------
@@ -337,6 +359,9 @@ export function parseProgressFromFfmpegStderr(
  *
  * Returns a Promise that resolves when the process exits with code 0,
  * and rejects otherwise.  Progress is reported via `onProgress` callback.
+ *
+ * Security: the ffmpeg binary is hard-coded to prevent command injection.
+ * Only the argument list (not a shell string) is passed to spawn().
  */
 export function runFfmpegCommand(
   command: string,
@@ -344,13 +369,17 @@ export function runFfmpegCommand(
   totalDurationSecs = 0
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Split the command string into argv – handles simple quoted strings
+    // Split the command string into argv (strips the leading binary token)
     const args = tokenizeCommand(command);
-    const binary = args.shift() ?? "ffmpeg";
+    // Drop the first token (the binary name) – we always use the hard-coded path
+    args.shift();
 
-    logger.info({ binary, args: args.join(" ") }, "Spawning ffmpeg process");
+    // Hard-coded binary prevents command injection
+    const FFMPEG_BIN = process.env.FFMPEG_BIN ?? "ffmpeg";
 
-    const proc = spawn(binary, args, { stdio: ["ignore", "ignore", "pipe"] });
+    logger.info({ binary: FFMPEG_BIN, args: args.join(" ") }, "Spawning ffmpeg process");
+
+    const proc = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
 
     proc.stderr.on("data", (d: Buffer) => {
@@ -428,7 +457,13 @@ export function enqueueTranscode(params: EnqueueTranscodeParams): TranscodeJob |
   if (!inputPath) return { error: "inputPath is required" };
 
   const jobId = randomId();
-  const outputDir = path.join(OUTPUT_ROOT, videoId, jobId);
+  // Use safeOutputPath to prevent directory traversal
+  let outputDir: string;
+  try {
+    outputDir = safeOutputPath(OUTPUT_ROOT, videoId, jobId);
+  } catch {
+    return { error: "Invalid videoId or jobId in output path" };
+  }
   const now = nowIso();
 
   const job: TranscodeJob = {

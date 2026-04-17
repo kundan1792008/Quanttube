@@ -135,6 +135,27 @@ function ensureDir(dir: string): void {
   }
 }
 
+/**
+ * Sanitize a path component (videoId, jobId) to prevent directory traversal.
+ * Keeps alphanumerics, hyphens and underscores only.
+ */
+function sanitizePathComponent(component: string): string {
+  return component.replace(/[^a-zA-Z0-9\-_]/g, "_");
+}
+
+/**
+ * Build a safe output path within a given root, validating no traversal occurs.
+ */
+function safeOutputPath(root: string, ...segments: string[]): string {
+  const sanitized = segments.map(sanitizePathComponent);
+  const resolved = path.resolve(root, ...sanitized);
+  const resolvedRoot = path.resolve(root);
+  if (!resolved.startsWith(resolvedRoot + path.sep) && resolved !== resolvedRoot) {
+    throw new Error(`Path traversal detected: ${resolved} is outside ${resolvedRoot}`);
+  }
+  return resolved;
+}
+
 // ---------------------------------------------------------------------------
 // Voice profile extraction (stub)
 // ---------------------------------------------------------------------------
@@ -278,10 +299,9 @@ async function synthesizeSegmentAudio(
 
   if (!TTS_API_KEY) {
     // Stub mode – write a tiny dummy file
-    fs.writeFileSync(
-      outputPath,
-      `STUB_AUDIO:lang=${targetLanguage}:voice=${voiceProfile.voiceId}:text=${text.slice(0, 40)}`
-    );
+    // outputPath is constructed internally (never from raw user input)
+    const safeText = `STUB_AUDIO:lang=${sanitizePathComponent(targetLanguage)}:voice=${sanitizePathComponent(voiceProfile.voiceId)}:text=stub`;
+    fs.writeFileSync(outputPath, safeText);
 
     // Estimate synthesized duration based on word count and speaking rate
     const wordCount = text.split(/\s+/).filter(Boolean).length;
@@ -416,7 +436,7 @@ async function runSynthesisJob(
     job.status = "synthesizing";
     job.updatedAt = nowIso();
 
-    const outputDir = path.join(SYNTHESIS_OUTPUT_ROOT, job.videoId, job.jobId);
+    const outputDir = safeOutputPath(SYNTHESIS_OUTPUT_ROOT, job.videoId, job.jobId);
     ensureDir(outputDir);
 
     const synthesisSegments: SynthesisSegment[] = [];
@@ -459,10 +479,11 @@ async function runSynthesisJob(
     const mixedAudioPath = path.join(outputDir, "dubbed_mixed.aac");
 
     // In stub mode, create placeholder files
+    // Both paths are derived from safeOutputPath-validated outputDir
     if (!TTS_API_KEY) {
-      fs.writeFileSync(dubbedAudioPath, `STUB_DUBBED:${job.targetLanguage}:${job.videoId}`);
+      fs.writeFileSync(dubbedAudioPath, `STUB_DUBBED:${sanitizePathComponent(job.targetLanguage)}:${sanitizePathComponent(job.videoId)}`);
       if (job.backgroundAudioPath) {
-        fs.writeFileSync(mixedAudioPath, `STUB_MIXED:${job.targetLanguage}:${job.videoId}`);
+        fs.writeFileSync(mixedAudioPath, `STUB_MIXED:${sanitizePathComponent(job.targetLanguage)}:${sanitizePathComponent(job.videoId)}`);
       }
     }
 
