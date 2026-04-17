@@ -6,6 +6,8 @@ export {
   listSessions,
   extractAudioBuffer,
   createDubbingJob,
+  batchCreateDubbingJobs,
+  updateDubbingJobStatus,
   getDubbingJob,
   listDubbingJobs,
   createReelShare,

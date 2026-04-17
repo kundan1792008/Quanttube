@@ -28,6 +28,15 @@ describe("GET /api/v1/stream/:mediaId", () => {
     expect(res.body.allTiers).toHaveLength(7);
   });
 
+  it("returns a DASH manifest URL alongside HLS", async () => {
+    const res = await request(app).get("/api/v1/stream/movie-001");
+    expect(res.status).toBe(200);
+    expect(res.body.dashManifestUrl).toContain("movie-001");
+    expect(res.body.dashManifestUrl).toContain("manifest.mpd");
+    expect(res.body.syncMetadata).toBeDefined();
+    expect(res.body.syncMetadata.targetSyncOffsetMs).toBe(100);
+  });
+
   it("selects 4K tier for engagement score 0.9", async () => {
     const res = await request(app)
       .get("/api/v1/stream/movie-001")
@@ -42,6 +51,7 @@ describe("GET /api/v1/stream/:mediaId", () => {
       .query({ mode: "audio-only" });
     expect(res.status).toBe(200);
     expect(res.body.selectedTier.resolution).toBe("audio");
+    expect(res.body.syncMetadata.protocol).toBe("hls-audio-only");
   });
 
   it("rejects invalid engagementScore", async () => {

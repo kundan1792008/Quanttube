@@ -48,7 +48,15 @@ export interface DubbingJob {
   status: DubbingJobStatus;
   createdAt: string;
   updatedAt: string;
+  /** Measured lip-sync offset in milliseconds (target: < 100 ms). */
+  syncOffsetMs?: number;
 }
+
+/**
+ * The 5 primary deep-dub target languages auto-applied on video upload.
+ * Covers the most widely spoken languages outside the source language.
+ */
+export const DEFAULT_DUB_LANGUAGES: string[] = ["es", "hi", "pt", "zh", "ar"];
 
 /** Payload to request a new dubbing job. */
 export interface CreateDubbingJobRequest {

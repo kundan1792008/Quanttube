@@ -101,10 +101,15 @@ router.get("/:mediaId", (req: Request, res: Response) => {
     userId: userId ?? null,
     selectedTier: tier,
     hlsManifestUrl: `${CDN_BASE_URL}/hls/${encodeURIComponent(mediaId)}/${tier.resolution}/master.m3u8`,
+    dashManifestUrl: `${CDN_BASE_URL}/dash/${encodeURIComponent(mediaId)}/${tier.resolution}/manifest.mpd`,
     allTiers: BITRATE_LADDER,
     engagementScore,
     mode: mode ?? "cinema",
-    note: "HLS streaming stub – real CDN URL would be served here",
+    syncMetadata: {
+      targetSyncOffsetMs: 100,
+      protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
+    },
+    note: "HLS/DASH adaptive streaming stub – real CDN URL would be served here",
   });
 });
 
