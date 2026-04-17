@@ -206,6 +206,11 @@ resource "aws_cloudfront_distribution" "cdn" {
 }
 
 # CORS headers for browser-based HLS/DASH players
+#
+# `access_control_allow_origins = ["*"]` is intentional for publicly accessible
+# content (free-tier streams).  Premium / DRM-protected content should use
+# CloudFront signed URLs or signed cookies instead of CORS header restrictions,
+# as origin header spoofing cannot be prevented by CORS alone.
 resource "aws_cloudfront_response_headers_policy" "cors" {
   name = "quanttube-cors-policy"
 

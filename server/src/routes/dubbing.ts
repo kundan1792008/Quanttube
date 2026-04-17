@@ -29,13 +29,27 @@ const BatchDubbingJobSchema = z.object({
     .optional(),
 });
 
-const UpdateJobStatusSchema = z.object({
-  status: z.enum(
-    Object.values(DubbingJobStatus) as [DubbingJobStatus, ...DubbingJobStatus[]]
-  ),
-  /** Final measured lip-sync offset in milliseconds (should be < 100 for a quality dub). */
-  syncOffsetMs: z.number().min(0).optional(),
-});
+const UpdateJobStatusSchema = z
+  .object({
+    status: z.enum(
+      Object.values(DubbingJobStatus) as [DubbingJobStatus, ...DubbingJobStatus[]]
+    ),
+    /**
+     * Final measured lip-sync offset in milliseconds (should be < 100 for a quality dub).
+     * Only meaningful (and accepted) when `status` is `completed` or `failed`.
+     */
+    syncOffsetMs: z.number().min(0).optional(),
+  })
+  .refine(
+    (data) =>
+      data.syncOffsetMs === undefined ||
+      data.status === DubbingJobStatus.Completed ||
+      data.status === DubbingJobStatus.Failed,
+    {
+      message: "syncOffsetMs can only be set when status is 'completed' or 'failed'",
+      path: ["syncOffsetMs"],
+    }
+  );
 
 const ListJobsQuerySchema = z.object({
   sessionId: z.string().optional(),

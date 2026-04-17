@@ -23,6 +23,17 @@ const StreamQuerySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+
+interface StreamSyncMetadata {
+  /** Target lip-sync accuracy in milliseconds. Sub-100ms is production quality. */
+  targetSyncOffsetMs: number;
+  /** Streaming protocol combination active for this tier. */
+  protocol: "hls+dash" | "hls-audio-only";
+}
+
+// ---------------------------------------------------------------------------
 // Bitrate ladder (HLS) – stub values
 // ---------------------------------------------------------------------------
 
@@ -96,6 +107,11 @@ router.get("/:mediaId", (req: Request, res: Response) => {
     "Stream tier selected"
   );
 
+  const syncMetadata: StreamSyncMetadata = {
+    targetSyncOffsetMs: 100,
+    protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
+  };
+
   res.json({
     mediaId,
     userId: userId ?? null,
@@ -105,10 +121,7 @@ router.get("/:mediaId", (req: Request, res: Response) => {
     allTiers: BITRATE_LADDER,
     engagementScore,
     mode: mode ?? "cinema",
-    syncMetadata: {
-      targetSyncOffsetMs: 100,
-      protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
-    },
+    syncMetadata,
     note: "HLS/DASH adaptive streaming stub – real CDN URL would be served here",
   });
 });
