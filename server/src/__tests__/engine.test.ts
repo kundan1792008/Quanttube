@@ -5,6 +5,7 @@ import {
   PlaybackMode,
   DubbingJobStatus,
   SUPPORTED_LANGUAGES,
+  DEFAULT_DUB_LANGUAGES,
   AvatarPressureState,
   DeepLinkPlatform,
 } from "../types";
@@ -378,5 +379,149 @@ describe("Quantsink avatar pressure behavior", () => {
         expect.objectContaining({ memberId: "member-b", avatarState: AvatarPressureState.Gray }),
       ])
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Batch Deep-Dubbing – POST /api/dubbing/batch
+// ---------------------------------------------------------------------------
+
+describe("POST /api/dubbing/batch", () => {
+  it("creates 5 default dubbing jobs when no languages specified", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const res = await request(app)
+      .post("/api/dubbing/batch")
+      .send({ sessionId: session.body.sessionId });
+    expect(res.status).toBe(201);
+    expect(res.body.queued).toHaveLength(DEFAULT_DUB_LANGUAGES.length);
+    for (const job of res.body.queued) {
+      expect(DEFAULT_DUB_LANGUAGES).toContain(job.targetLanguage);
+      expect(job.status).toBe(DubbingJobStatus.Queued);
+    }
+  });
+
+  it("creates jobs for a custom list of languages", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const res = await request(app)
+      .post("/api/dubbing/batch")
+      .send({ sessionId: session.body.sessionId, languages: ["fr", "de", "ja"] });
+    expect(res.status).toBe(201);
+    expect(res.body.queued).toHaveLength(3);
+    const langs = res.body.queued.map((j: { targetLanguage: string }) => j.targetLanguage);
+    expect(langs).toContain("fr");
+    expect(langs).toContain("de");
+    expect(langs).toContain("ja");
+  });
+
+  it("rejects an unknown session", async () => {
+    const res = await request(app)
+      .post("/api/dubbing/batch")
+      .send({ sessionId: "nonexistent" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects missing sessionId", async () => {
+    const res = await request(app).post("/api/dubbing/batch").send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a language list exceeding 20 entries", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const tooMany = Array.from({ length: 21 }, (_, i) => `lang-${i}`);
+    const res = await request(app)
+      .post("/api/dubbing/batch")
+      .send({ sessionId: session.body.sessionId, languages: tooMany });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dubbing job status update + lip-sync – PATCH /api/dubbing/jobs/:id/status
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/dubbing/jobs/:id/status", () => {
+  it("transitions a job to processing", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const job = await request(app)
+      .post("/api/dubbing/jobs")
+      .send({ sessionId: session.body.sessionId, targetLanguage: "es" });
+    const res = await request(app)
+      .patch(`/api/dubbing/jobs/${job.body.jobId}/status`)
+      .send({ status: DubbingJobStatus.Processing });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe(DubbingJobStatus.Processing);
+  });
+
+  it("records syncOffsetMs on completion (sub-100ms target)", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const job = await request(app)
+      .post("/api/dubbing/jobs")
+      .send({ sessionId: session.body.sessionId, targetLanguage: "hi" });
+    const res = await request(app)
+      .patch(`/api/dubbing/jobs/${job.body.jobId}/status`)
+      .send({ status: DubbingJobStatus.Completed, syncOffsetMs: 42 });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe(DubbingJobStatus.Completed);
+    expect(res.body.syncOffsetMs).toBe(42);
+    expect(res.body.syncOffsetMs).toBeLessThan(100);
+  });
+
+  it("stores syncOffsetMs above 100ms when lip-sync target is not met", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const job = await request(app)
+      .post("/api/dubbing/jobs")
+      .send({ sessionId: session.body.sessionId, targetLanguage: "ar" });
+    const res = await request(app)
+      .patch(`/api/dubbing/jobs/${job.body.jobId}/status`)
+      .send({ status: DubbingJobStatus.Completed, syncOffsetMs: 145 });
+    expect(res.status).toBe(200);
+    expect(res.body.syncOffsetMs).toBe(145);
+    // The field is persisted as-is; the caller is responsible for retry logic
+    expect(res.body.syncOffsetMs).toBeGreaterThanOrEqual(100);
+  });
+
+  it("rejects syncOffsetMs when status is not completed or failed", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const job = await request(app)
+      .post("/api/dubbing/jobs")
+      .send({ sessionId: session.body.sessionId, targetLanguage: "es" });
+    const res = await request(app)
+      .patch(`/api/dubbing/jobs/${job.body.jobId}/status`)
+      .send({ status: DubbingJobStatus.Processing, syncOffsetMs: 42 });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for unknown job", async () => {
+    const res = await request(app)
+      .patch("/api/dubbing/jobs/nonexistent/status")
+      .send({ status: DubbingJobStatus.Failed });
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an invalid status value", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const job = await request(app)
+      .post("/api/dubbing/jobs")
+      .send({ sessionId: session.body.sessionId, targetLanguage: "es" });
+    const res = await request(app)
+      .patch(`/api/dubbing/jobs/${job.body.jobId}/status`)
+      .send({ status: "invalid-status" });
+    expect(res.status).toBe(400);
   });
 });

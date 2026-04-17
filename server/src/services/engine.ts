@@ -4,6 +4,7 @@ import {
   PlaybackMode,
   DubbingJob,
   DubbingJobStatus,
+  DEFAULT_DUB_LANGUAGES,
   SUPPORTED_LANGUAGES,
   ReelShare,
   CreateReelShareRequest,
@@ -153,8 +154,52 @@ export function createDubbingJob(
     status: DubbingJobStatus.Queued,
     createdAt: now,
     updatedAt: now,
+    syncOffsetMs: undefined,
   };
   dubbingJobs.set(job.jobId, job);
+  return job;
+}
+
+/**
+ * Batch-enqueue dubbing jobs for a list of languages.
+ *
+ * Used when a video is uploaded: automatically creates one job per
+ * language so the pipeline can transcribe, translate, and dub the
+ * content into all target languages in parallel.
+ *
+ * Defaults to `DEFAULT_DUB_LANGUAGES` when no languages are provided.
+ */
+export function batchCreateDubbingJobs(
+  sessionId: string,
+  languages?: string[]
+): Array<DubbingJob | { error: string; language: string }> {
+  const targets = languages && languages.length > 0 ? languages : DEFAULT_DUB_LANGUAGES;
+  return targets.map((lang) => {
+    const result = createDubbingJob(sessionId, lang);
+    if ("error" in result) return { ...result, language: lang };
+    return result;
+  });
+}
+
+/**
+ * Update the status of a dubbing job and record the final lip-sync
+ * offset when the job reaches `completed` state.
+ *
+ * `syncOffsetMs` should be < 100 for a production-quality dub.
+ */
+export function updateDubbingJobStatus(
+  jobId: string,
+  status: DubbingJobStatus,
+  syncOffsetMs?: number
+): DubbingJob | undefined {
+  const job = dubbingJobs.get(jobId);
+  if (!job) return undefined;
+
+  job.status = status;
+  job.updatedAt = new Date().toISOString();
+  if (syncOffsetMs !== undefined) {
+    job.syncOffsetMs = syncOffsetMs;
+  }
   return job;
 }
 
