@@ -178,3 +178,6 @@ export type {
   VideoMetaForRecommender,
 } from "./HybridRecommender";
 
+export * from "./AutoplayEngine";
+export * from "./WatchStreakService";
+export * from "./ExitIntentTrigger";

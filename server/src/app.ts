@@ -8,6 +8,7 @@ import cinemaRoutes from "./routes/cinema";
 import feedRoutes from "./routes/feed";
 import videosRoutes, { playlistsRouter, recommendationsRouter } from "./routes/videos";
 import logger from "./logger";
+import { globalErrorHandler } from "./middleware/error";
 
 const app = express();
 
@@ -47,5 +48,8 @@ app.use("/api/v1/playlists", playlistsRouter);
 
 /** Hybrid recommendations */
 app.use("/api/v1/recommendations", recommendationsRouter);
+
+/** Global error handler – must be registered last */
+app.use(globalErrorHandler);
 
 export default app;

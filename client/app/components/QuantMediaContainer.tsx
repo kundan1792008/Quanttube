@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlaybackMode, useMedia } from "../context/MediaContext";
 import styles from "./QuantMediaContainer.module.css";
@@ -36,6 +36,35 @@ export default function QuantMediaContainer() {
 
   const { apiBaseUrl, groupId, sharedBy, memberIds } = QUANTTUBE_CONFIG;
 
+  /**
+   * Registry of in-flight AbortControllers.
+   * On unmount every pending request is aborted to prevent state updates
+   * on an unmounted component and to release network resources.
+   */
+  const pendingControllersRef = useRef<Set<AbortController>>(new Set());
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    const controllers = pendingControllersRef.current;
+    return () => {
+      mountedRef.current = false;
+      for (const ctrl of controllers) {
+        ctrl.abort();
+      }
+      controllers.clear();
+    };
+  }, []);
+
+  /** Create an AbortController that is automatically de-registered on completion. */
+  function createController(): AbortController {
+    const ctrl = new AbortController();
+    pendingControllersRef.current.add(ctrl);
+    ctrl.signal.addEventListener("abort", () => {
+      pendingControllersRef.current.delete(ctrl);
+    });
+    return ctrl;
+  }
+
   const spectrumConfig = useMemo(
     () =>
       Array.from({ length: 24 }, (_, i) => {
@@ -47,18 +76,19 @@ export default function QuantMediaContainer() {
     []
   );
 
-  async function refreshDashboard() {
+  async function refreshDashboard(signal?: AbortSignal) {
     try {
-      const response = await fetch(`${apiBaseUrl}/api/reels/quantsink/${groupId}/avatars`);
-      if (!response.ok) return;
+      const response = await fetch(`${apiBaseUrl}/api/reels/quantsink/${encodeURIComponent(groupId)}/avatars`, { signal });
+      if (!response.ok || !mountedRef.current) return;
       const payload = (await response.json()) as AvatarDashboardState[];
-      setDashboard(payload);
+      if (mountedRef.current) setDashboard(payload);
     } catch {
-      // noop for local dev without backend
+      // noop for local dev without backend or when request is aborted
     }
   }
 
   async function shareReelToQuantchat() {
+    const controller = createController();
     setShareLoading(true);
     setShareError(null);
     try {
@@ -71,32 +101,43 @@ export default function QuantMediaContainer() {
           sharedBy,
           memberIds,
         }),
+        signal: controller.signal,
       });
       const payload = (await response.json()) as ReelShareResponse | { error: string };
+      if (!mountedRef.current) return;
       if (!response.ok) {
         setShareError("error" in payload ? payload.error : "Failed to share reel");
         return;
       }
       setShareData(payload as ReelShareResponse);
-      await refreshDashboard();
+      await refreshDashboard(controller.signal);
     } catch {
-      setShareError(`Backend unavailable at ${apiBaseUrl}`);
+      if (mountedRef.current) {
+        setShareError(`Backend unavailable at ${apiBaseUrl}`);
+      }
     } finally {
-      setShareLoading(false);
+      pendingControllersRef.current.delete(controller);
+      if (mountedRef.current) {
+        setShareLoading(false);
+      }
     }
   }
 
   async function simulateMemberClick(memberId: string, platform: DeepLinkPlatform) {
     if (!shareData) return;
+    const controller = createController();
     try {
       await fetch(`${apiBaseUrl}/api/reels/share/${shareData.shareId}/click`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ memberId, platform }),
+        signal: controller.signal,
       });
-      await refreshDashboard();
+      if (mountedRef.current) await refreshDashboard(controller.signal);
     } catch {
-      // noop for local dev without backend
+      // noop for local dev without backend or when request is aborted
+    } finally {
+      pendingControllersRef.current.delete(controller);
     }
   }
 
