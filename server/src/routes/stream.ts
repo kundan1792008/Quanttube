@@ -1,6 +1,7 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import logger from "../logger";
+import { cache } from "../services/cache";
 
 const router = Router();
 
@@ -72,19 +73,60 @@ function selectBitrateTier(
 // GET /api/v1/stream/:mediaId
 // ---------------------------------------------------------------------------
 
+/** Cache TTL for stream metadata (seconds). */
+const STREAM_CACHE_TTL_SECONDS = 60;
+
+interface StreamMeta {
+  allTiers: typeof BITRATE_LADDER;
+  hlsManifestBaseUrl: string;
+  dashManifestBaseUrl: string;
+}
+
 /**
- * Adaptive HLS streaming stub.
+ * Build a deterministic cache key for stream metadata.
+ * The user-specific `userId` is intentionally excluded so that metadata
+ * for the same media item is shared across users; per-user engagement
+ * adjustments are applied at response time.
+ * Both parameters are URI-encoded to prevent key collisions from
+ * values that contain the `:` separator.
+ */
+function streamCacheKey(mediaId: string, mode: string): string {
+  return `stream:${encodeURIComponent(mediaId)}:${encodeURIComponent(mode)}`;
+}
+
+/**
+ * Try to retrieve and parse stream metadata from the cache.
+ * Returns `null` on cache miss or if the cached payload is malformed.
+ */
+async function getCachedStreamMeta(key: string): Promise<StreamMeta | null> {
+  const raw = await cache.get(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as StreamMeta;
+  } catch {
+    // Discard corrupted cache entries and fall through to a fresh computation.
+    logger.warn({ key }, "Discarding malformed stream cache entry");
+    return null;
+  }
+}
+
+/**
+ * Adaptive HLS/DASH streaming stub.
  *
- * Returns a stub HLS manifest URL and the selected bitrate tier for the
- * given mediaId, dynamically adjusted based on the user's current
+ * Returns stub HLS and DASH manifest URLs and the selected bitrate tier for
+ * the given mediaId, dynamically adjusted based on the user's current
  * engagement state (`engagementScore` query param, 0-1).
+ *
+ * Video metadata (bitrate ladder, CDN manifest URL) is cached in Redis
+ * (or the in-memory fallback) for `STREAM_CACHE_TTL_SECONDS` seconds to
+ * avoid redundant lookups on frequently-accessed media items.
  *
  * In production this endpoint would:
  *  1. Authenticate the user via Quantmail JWT.
  *  2. Look up the CDN-hosted HLS manifest for `mediaId`.
  *  3. Proxy or redirect to the appropriate bitrate playlist.
  */
-router.get("/:mediaId", (req: Request, res: Response) => {
+async function streamHandler(req: Request, res: Response): Promise<void> {
   const paramParse = MediaIdParamSchema.safeParse(req.params);
   if (!paramParse.success) {
     res.status(400).json({ error: paramParse.error.issues[0]?.message });
@@ -99,11 +141,46 @@ router.get("/:mediaId", (req: Request, res: Response) => {
 
   const { mediaId } = paramParse.data;
   const { userId, engagementScore = 0.5, mode } = queryParse.data;
+  const resolvedMode = mode ?? "cinema";
 
-  const tier = selectBitrateTier(engagementScore, mode);
+  // Check cache for video metadata (bitrate ladder + CDN manifest URLs)
+  const cacheKey = streamCacheKey(mediaId, resolvedMode);
+  const cachedMeta = await getCachedStreamMeta(cacheKey);
+  if (cachedMeta) {
+    const tier = selectBitrateTier(engagementScore, resolvedMode);
+    const syncMetadata: StreamSyncMetadata = {
+      targetSyncOffsetMs: 100,
+      protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
+    };
+    logger.info(
+      { mediaId, userId, engagementScore, mode: resolvedMode, resolution: tier.resolution, cacheHit: true },
+      "Stream tier selected (cache hit)"
+    );
+    res.json({
+      mediaId,
+      userId: userId ?? null,
+      selectedTier: tier,
+      hlsManifestUrl: `${cachedMeta.hlsManifestBaseUrl}/${tier.resolution}/master.m3u8`,
+      dashManifestUrl: `${cachedMeta.dashManifestBaseUrl}/${tier.resolution}/manifest.mpd`,
+      allTiers: cachedMeta.allTiers,
+      engagementScore,
+      mode: resolvedMode,
+      syncMetadata,
+      note: "HLS/DASH adaptive streaming stub – real CDN URL would be served here",
+    });
+    return;
+  }
+
+  // Cache miss – compute and store metadata
+  const tier = selectBitrateTier(engagementScore, resolvedMode);
+  const hlsManifestBaseUrl = `${CDN_BASE_URL}/hls/${encodeURIComponent(mediaId)}`;
+  const dashManifestBaseUrl = `${CDN_BASE_URL}/dash/${encodeURIComponent(mediaId)}`;
+  const meta: StreamMeta = { allTiers: BITRATE_LADDER, hlsManifestBaseUrl, dashManifestBaseUrl };
+
+  await cache.set(cacheKey, JSON.stringify(meta), STREAM_CACHE_TTL_SECONDS);
 
   logger.info(
-    { mediaId, userId, engagementScore, mode, resolution: tier.resolution },
+    { mediaId, userId, engagementScore, mode: resolvedMode, resolution: tier.resolution, cacheHit: false },
     "Stream tier selected"
   );
 
@@ -116,14 +193,18 @@ router.get("/:mediaId", (req: Request, res: Response) => {
     mediaId,
     userId: userId ?? null,
     selectedTier: tier,
-    hlsManifestUrl: `${CDN_BASE_URL}/hls/${encodeURIComponent(mediaId)}/${tier.resolution}/master.m3u8`,
-    dashManifestUrl: `${CDN_BASE_URL}/dash/${encodeURIComponent(mediaId)}/${tier.resolution}/manifest.mpd`,
+    hlsManifestUrl: `${hlsManifestBaseUrl}/${tier.resolution}/master.m3u8`,
+    dashManifestUrl: `${dashManifestBaseUrl}/${tier.resolution}/manifest.mpd`,
     allTiers: BITRATE_LADDER,
     engagementScore,
-    mode: mode ?? "cinema",
+    mode: resolvedMode,
     syncMetadata,
     note: "HLS/DASH adaptive streaming stub – real CDN URL would be served here",
   });
+}
+
+router.get("/:mediaId", (req: Request, res: Response, next: NextFunction) => {
+  streamHandler(req, res).catch(next);
 });
 
 export default router;
