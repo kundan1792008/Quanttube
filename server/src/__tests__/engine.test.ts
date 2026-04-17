@@ -476,6 +476,22 @@ describe("PATCH /api/dubbing/jobs/:id/status", () => {
     expect(res.body.syncOffsetMs).toBeLessThan(100);
   });
 
+  it("stores syncOffsetMs above 100ms when lip-sync target is not met", async () => {
+    const session = await request(app)
+      .post("/api/sessions")
+      .send({ streamUrl: "https://cdn.example.com/movie.m3u8" });
+    const job = await request(app)
+      .post("/api/dubbing/jobs")
+      .send({ sessionId: session.body.sessionId, targetLanguage: "ar" });
+    const res = await request(app)
+      .patch(`/api/dubbing/jobs/${job.body.jobId}/status`)
+      .send({ status: DubbingJobStatus.Completed, syncOffsetMs: 145 });
+    expect(res.status).toBe(200);
+    expect(res.body.syncOffsetMs).toBe(145);
+    // The field is persisted as-is; the caller is responsible for retry logic
+    expect(res.body.syncOffsetMs).toBeGreaterThanOrEqual(100);
+  });
+
   it("returns 404 for unknown job", async () => {
     const res = await request(app)
       .patch("/api/dubbing/jobs/nonexistent/status")

@@ -93,15 +93,21 @@ resource "aws_cloudfront_origin_access_control" "segments" {
 }
 
 # ---------------------------------------------------------------------------
-# CloudFront Cache Policy – tuned for HLS/DASH manifests and segments
+# CloudFront Cache Policies
+#
+# Two policies are used to reflect the different caching characteristics
+# of streaming content:
+#   • manifests  – frequently updated (every few seconds), short TTL (2 s)
+#   • segments   – immutable once written, long TTL (30 days)
 # ---------------------------------------------------------------------------
 
-resource "aws_cloudfront_cache_policy" "streaming" {
-  name        = "quanttube-streaming-policy"
-  comment     = "Short TTL for HLS/DASH manifests; longer TTL for immutable segments"
+# Manifest cache policy – .m3u8 (HLS) and .mpd (DASH) playlists
+resource "aws_cloudfront_cache_policy" "manifests" {
+  name        = "quanttube-manifest-policy"
+  comment     = "Short TTL for HLS/DASH manifest playlists (updated frequently)"
   default_ttl = 2
   min_ttl     = 0
-  max_ttl     = 86400
+  max_ttl     = 10
 
   parameters_in_cache_key_and_forwarded_to_origin {
     cookies_config { cookie_behavior = "none" }
@@ -110,6 +116,24 @@ resource "aws_cloudfront_cache_policy" "streaming" {
 
     enable_accept_encoding_brotli = true
     enable_accept_encoding_gzip   = true
+  }
+}
+
+# Segment cache policy – .ts (HLS) and .m4s (DASH) media segments
+resource "aws_cloudfront_cache_policy" "segments" {
+  name        = "quanttube-segment-policy"
+  comment     = "Long TTL for immutable HLS/DASH media segments"
+  default_ttl = 2592000  # 30 days
+  min_ttl     = 2592000
+  max_ttl     = 2592000
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    cookies_config { cookie_behavior = "none" }
+    headers_config  { header_behavior = "none" }
+    query_strings_config { query_string_behavior = "none" }
+
+    enable_accept_encoding_brotli = false  # binary content; compression not beneficial
+    enable_accept_encoding_gzip   = false
   }
 }
 
@@ -129,13 +153,39 @@ resource "aws_cloudfront_distribution" "cdn" {
     origin_access_control_id = aws_cloudfront_origin_access_control.segments.id
   }
 
+  # Manifest playlist files (.m3u8, .mpd) – short TTL, updated frequently
+  ordered_cache_behavior {
+    path_pattern           = "*.m3u8"
+    target_origin_id       = "s3-segments"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    cache_policy_id        = aws_cloudfront_cache_policy.manifests.id
+    compress               = true
+
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.cors.id
+  }
+
+  ordered_cache_behavior {
+    path_pattern           = "*.mpd"
+    target_origin_id       = "s3-segments"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    cache_policy_id        = aws_cloudfront_cache_policy.manifests.id
+    compress               = true
+
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.cors.id
+  }
+
+  # Default behaviour covers immutable media segments (.ts, .m4s, .mp4) – long TTL
   default_cache_behavior {
     target_origin_id       = "s3-segments"
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
-    cache_policy_id        = aws_cloudfront_cache_policy.streaming.id
-    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.segments.id
+    compress               = false  # segments are already compressed video/audio
 
     response_headers_policy_id = aws_cloudfront_response_headers_policy.cors.id
   }
