@@ -440,7 +440,7 @@ export function classifyVisualEvent(description: string): VisualEventType {
     return "character_expression";
   }
   if (lower.includes("scene") || lower.includes("transition") || lower.includes("cut") ||
-      lower.includes("transition") || lower.includes("exterior") || lower.includes("interior")) {
+      lower.includes("exterior") || lower.includes("interior")) {
     return "scene_change";
   }
   if (lower.includes("gesture") || lower.includes("walk") || lower.includes("run") ||

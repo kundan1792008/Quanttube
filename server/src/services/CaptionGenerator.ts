@@ -488,7 +488,7 @@ async function performDiarization(
 
     const speakers = Array.from(speakerMap.entries()).map(([speakerId, totalSpeakingTime]) => ({
       speakerId,
-      label: `Speaker ${speakerId.replace("spk_", "") === "0" ? "1" : "2"}`,
+      label: speakerSegments.find((s) => s.speakerId === speakerId)?.label ?? "Speaker",
       totalSpeakingTime: Math.round(totalSpeakingTime * 100) / 100,
     }));
 
@@ -519,7 +519,7 @@ async function performDiarization(
     throw new Error(`Diarization API ${response.status}: ${errText}`);
   }
 
-  void stat;
+  void stat; // Size validated above; stat used to confirm file accessibility
 
   const raw = (await response.json()) as {
     segments?: Array<{ speaker: string; start: number; end: number }>;

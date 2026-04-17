@@ -1709,7 +1709,7 @@ export default function AccessibilityPlayer({
               }}
               aria-hidden="true"
             >
-              Space/K: Play · M: Mute · F: Fullscreen · C: Captions · A: Audio Desc · H: High Contrast · &lt;/&gt;: Speed
+              Space/K: Play · M: Mute · F: Fullscreen · C: Captions · A: Audio Desc · H: High Contrast · {"< / >: Speed"}
             </div>
           </motion.div>
         )}
