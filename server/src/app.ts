@@ -7,6 +7,7 @@ import streamRoutes from "./routes/stream";
 import cinemaRoutes from "./routes/cinema";
 import feedRoutes from "./routes/feed";
 import logger from "./logger";
+import { globalErrorHandler } from "./middleware/error";
 
 const app = express();
 
@@ -37,5 +38,8 @@ app.use("/api/v1/cinema", cinemaRoutes);
 
 /** Telepathic Feed Engine – cross-app signal ingestion + recommendations (v1) */
 app.use("/api/v1/feed", feedRoutes);
+
+/** Global error handler – must be registered last */
+app.use(globalErrorHandler);
 
 export default app;
