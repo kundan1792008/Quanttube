@@ -6,6 +6,7 @@ import reelsRoutes from "./routes/reels";
 import streamRoutes from "./routes/stream";
 import cinemaRoutes from "./routes/cinema";
 import feedRoutes from "./routes/feed";
+import remixesRoutes from "./routes/remixes";
 import logger from "./logger";
 import { globalErrorHandler } from "./middleware/error";
 
@@ -38,6 +39,9 @@ app.use("/api/v1/cinema", cinemaRoutes);
 
 /** Telepathic Feed Engine – cross-app signal ingestion + recommendations (v1) */
 app.use("/api/v1/feed", feedRoutes);
+
+/** AI Video Remix Engine – style transfer, audio remix, trending feed */
+app.use("/api/remixes", remixesRoutes);
 
 /** Global error handler – must be registered last */
 app.use(globalErrorHandler);

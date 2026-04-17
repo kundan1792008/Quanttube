@@ -30,3 +30,58 @@ export type { CrossAppSignal, CrossAppSignalType, MediaRecommendation } from "./
 export * from "./AutoplayEngine";
 export * from "./WatchStreakService";
 export * from "./ExitIntentTrigger";
+
+// ---------------------------------------------------------------------------
+// AI Video Remix Engine
+// ---------------------------------------------------------------------------
+
+export {
+  applyStyleTransfer,
+  swapBackground,
+  generateAlternateEnding,
+  addVisualEffects,
+  getRemixJob,
+  listRemixJobs,
+  remixProgressEmitter,
+  _resetRemixEngine,
+  STYLE_PRESETS,
+  VISUAL_EFFECTS,
+  BACKGROUND_PRESETS,
+} from "./RemixEngine";
+export type {
+  StylePreset,
+  VisualEffect,
+  BackgroundPreset,
+  RemixJobType,
+  RemixJobStatus,
+  RemixJob,
+  StyleTransferJob,
+  BackgroundSwapJob,
+  AlternateEndingJob,
+  VisualEffectsJob,
+  RemixProgressEvent,
+} from "./RemixEngine";
+
+export {
+  changeMusic,
+  addSoundEffects,
+  speedChange,
+  voiceClone,
+  getAudioJob,
+  listAudioJobs,
+  _resetAudioRemixService,
+  MUSIC_GENRES,
+  SOUND_EFFECTS,
+} from "./AudioRemixService";
+export type {
+  MusicGenre,
+  SoundEffectId,
+  AudioJobType,
+  AudioJobStatus,
+  AudioJob,
+  MusicChangeJob,
+  SfxInjectionJob,
+  SfxTimestamp,
+  SpeedChangeJob,
+  VoiceCloneJob,
+} from "./AudioRemixService";
