@@ -183,3 +183,4 @@ export type {
 export * from "./AutoplayEngine";
 export * from "./WatchStreakService";
 export * from "./ExitIntentTrigger";
+export * from "./SceneUnderstandingService";
