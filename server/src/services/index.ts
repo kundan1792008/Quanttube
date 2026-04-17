@@ -183,4 +183,23 @@ export type {
 export * from "./AutoplayEngine";
 export * from "./WatchStreakService";
 export * from "./ExitIntentTrigger";
-export * from "./SceneUnderstandingService";
+export {
+  DEFAULT_SCENE_UNDERSTANDING_CONFIG,
+  buildSceneUnderstandingReport,
+  detectSceneBoundaries,
+  buildSceneSegments,
+  detectHighlightMoments,
+  rankThumbnailCandidates,
+  generateChapters,
+} from "./SceneUnderstandingService";
+export type {
+  HistogramTriple,
+  FrameSignalInput,
+  SceneBoundary,
+  SceneSegment,
+  HighlightMoment,
+  SceneUnderstandingReport,
+  SceneUnderstandingConfig,
+  ChapterSegment,
+  ThumbnailCandidate as SceneThumbnailCandidate,
+} from "./SceneUnderstandingService";

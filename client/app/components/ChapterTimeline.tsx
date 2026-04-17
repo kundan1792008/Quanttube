@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import styles from "./ChapterTimeline.module.css";
+import Image from "next/image";
 
 export interface TimelineChapter {
   id: string;
@@ -60,6 +61,7 @@ export default function ChapterTimeline({
   title = "Chapter Timeline",
 }: ChapterTimelineProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const [trackWidth, setTrackWidth] = useState(0);
   const [hover, setHover] = useState<HoverState | null>(null);
   const [isKeyboardFocus, setIsKeyboardFocus] = useState(false);
 
@@ -226,6 +228,19 @@ export default function ChapterTimeline({
     return () => window.removeEventListener("mouseup", onWindowMouseUp);
   }, []);
 
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const update = () => setTrackWidth(track.clientWidth);
+    update();
+
+    const observer = new ResizeObserver(update);
+    observer.observe(track);
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <section className={styles.wrapper} aria-label={title}>
       <header className={styles.header}>
@@ -320,14 +335,16 @@ export default function ChapterTimeline({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.98 }}
                 transition={{ duration: 0.12 }}
-                style={{ left: clamp(hover.xPx, 72, (trackRef.current?.clientWidth ?? 0) - 72) }}
+                style={{ left: clamp(hover.xPx, 72, Math.max(72, trackWidth - 72)) }}
               >
                 <div className={styles.hoverTimestamp}>{formatMs(hover.timestampMs)}</div>
                 {hoverPreview.thumbnail && (
-                  <img
+                  <Image
                     src={hoverPreview.thumbnail.previewUrl}
                     alt=""
                     className={styles.previewImage}
+                    width={320}
+                    height={180}
                     loading="lazy"
                   />
                 )}

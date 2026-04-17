@@ -21,6 +21,7 @@ const LANGUAGES = [
 ];
 
 type DubbingState = "idle" | "cloning" | "done";
+const DEMO_VIDEO_DURATION_MS = 18 * 60 * 1000 + 22 * 1000;
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -30,7 +31,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const [showAds, setShowAds] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [timelineMs, setTimelineMs] = useState(0);
-  const timelineDurationMs = 18 * 60 * 1000 + 22 * 1000;
+  const timelineDurationMs = DEMO_VIDEO_DURATION_MS;
 
   useEffect(() => {
     if (!isPlaying) return;

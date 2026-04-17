@@ -139,6 +139,8 @@ export const DEFAULT_SCENE_UNDERSTANDING_CONFIG: SceneUnderstandingConfig = {
   maxChapters: 14,
 };
 
+const ANALYSIS_VERSION = "scene-understanding-v1";
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -186,7 +188,7 @@ export function buildSceneUnderstandingReport(params: {
     videoId,
     generatedAt: new Date().toISOString(),
     durationMs,
-    analysisVersion: "scene-understanding-v1",
+    analysisVersion: ANALYSIS_VERSION,
     boundaries,
     scenes,
     highlights,
@@ -1145,7 +1147,7 @@ function percentile(values: number[], quantile: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   const q = clamp(quantile, 0, 1);
   const index = Math.floor((sorted.length - 1) * q);
-  return sorted[index];
+  return sorted[index] ?? 0;
 }
 
 function zscore(value: number, meanValue: number, stdValue: number): number {

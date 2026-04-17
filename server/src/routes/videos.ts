@@ -650,25 +650,25 @@ router.get("/:id/dub", (req: Request, res: Response) => {
 
 router.post("/:id/scene-understanding/analyze", (req: Request, res: Response) => {
   const { id } = req.params;
-  if (!videosStore.has(id!)) {
+  if (!id || !videosStore.has(id)) {
     res.status(404).json({ error: `Video '${id}' not found` });
     return;
   }
 
   const parse = SceneUnderstandingRequestSchema.safeParse(req.body);
   if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
+    res.status(400).json({ error: "Validation failed", details: parse.error.issues });
     return;
   }
 
   const { durationMs, frameSignals, config } = parse.data;
   const report = buildSceneUnderstandingReport({
-    videoId: id!,
+    videoId: id,
     durationMs,
     frameSignals: frameSignals as FrameSignalInput[],
     config,
   });
-  sceneReportsStore.set(id!, report);
+  sceneReportsStore.set(id, report);
 
   logger.info(
     {
@@ -686,12 +686,12 @@ router.post("/:id/scene-understanding/analyze", (req: Request, res: Response) =>
 
 router.get("/:id/scene-understanding", (req: Request, res: Response) => {
   const { id } = req.params;
-  if (!videosStore.has(id!)) {
+  if (!id || !videosStore.has(id)) {
     res.status(404).json({ error: `Video '${id}' not found` });
     return;
   }
 
-  const report = sceneReportsStore.get(id!);
+  const report = sceneReportsStore.get(id);
   if (!report) {
     res.status(404).json({ error: "Scene understanding report not found for this video" });
     return;
@@ -702,12 +702,12 @@ router.get("/:id/scene-understanding", (req: Request, res: Response) => {
 
 router.get("/:id/scene-understanding/chapters", (req: Request, res: Response) => {
   const { id } = req.params;
-  if (!videosStore.has(id!)) {
+  if (!id || !videosStore.has(id)) {
     res.status(404).json({ error: `Video '${id}' not found` });
     return;
   }
 
-  const report = sceneReportsStore.get(id!);
+  const report = sceneReportsStore.get(id);
   if (!report) {
     res.status(404).json({ error: "Scene understanding report not found for this video" });
     return;
@@ -724,12 +724,12 @@ router.get("/:id/scene-understanding/chapters", (req: Request, res: Response) =>
 
 router.get("/:id/scene-understanding/highlights", (req: Request, res: Response) => {
   const { id } = req.params;
-  if (!videosStore.has(id!)) {
+  if (!id || !videosStore.has(id)) {
     res.status(404).json({ error: `Video '${id}' not found` });
     return;
   }
 
-  const report = sceneReportsStore.get(id!);
+  const report = sceneReportsStore.get(id);
   if (!report) {
     res.status(404).json({ error: "Scene understanding report not found for this video" });
     return;
@@ -746,12 +746,12 @@ router.get("/:id/scene-understanding/highlights", (req: Request, res: Response) 
 
 router.get("/:id/scene-understanding/thumbnails", (req: Request, res: Response) => {
   const { id } = req.params;
-  if (!videosStore.has(id!)) {
+  if (!id || !videosStore.has(id)) {
     res.status(404).json({ error: `Video '${id}' not found` });
     return;
   }
 
-  const report = sceneReportsStore.get(id!);
+  const report = sceneReportsStore.get(id);
   if (!report) {
     res.status(404).json({ error: "Scene understanding report not found for this video" });
     return;
