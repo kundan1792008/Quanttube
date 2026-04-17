@@ -24,3 +24,7 @@ export {
   _resetTelepathicFeed,
 } from "./telepathic-feed";
 export type { CrossAppSignal, CrossAppSignalType, MediaRecommendation } from "./telepathic-feed";
+
+export * from "./AutoplayEngine";
+export * from "./WatchStreakService";
+export * from "./ExitIntentTrigger";

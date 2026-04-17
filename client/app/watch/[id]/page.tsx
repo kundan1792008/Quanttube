@@ -6,6 +6,7 @@ import Link from "next/link";
 import SmartTranscript from "../../components/SmartTranscript";
 import PremiumPaywall from "../../components/PremiumPaywall";
 import QuantMediaContainer from "../../components/QuantMediaContainer";
+import SocialWatchParty from "../../components/SocialWatchParty";
 import { MediaProvider } from "../../context/MediaContext";
 
 const LANGUAGES = [
@@ -181,6 +182,17 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
             <SmartTranscript videoId={id} />
           </div>
         </div>
+
+
+        <section className="mt-10 space-y-4">
+          <div>
+            <h2 className="text-xl font-bold text-white/80">Live Watch Party</h2>
+            <p className="text-sm text-white/40">
+              Sync playback and chat with friends in real-time via WebSocket.
+            </p>
+          </div>
+          <SocialWatchParty partyId={`party-${id}`} userId="viewer-local" />
+        </section>
 
         <section className="mt-10 space-y-4">
           <div>
