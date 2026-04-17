@@ -62,10 +62,15 @@ model Video {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  audioTrack   AudioTrack?
-  watchHistory WatchHistory[]
-  comments     Comment[]
-  transcripts  Transcript[]
+  audioTrack     AudioTrack?
+  watchHistory   WatchHistory[]
+  comments       Comment[]
+  transcripts    Transcript[]
+  transcodes     Transcode[]
+  dubTracks      DubTrack[]
+  likes          Like[]
+  playlistItems  PlaylistItem[]
+  recommendations Recommendation[]
 
   @@index([channelId])
   @@index([creatorId])
@@ -152,4 +157,110 @@ model Transcript {
   updatedAt DateTime @updatedAt
 
   @@index([videoId])
+}
+
+model Transcode {
+  id           String   @id @default(uuid())
+  videoId      String
+  video        Video    @relation(fields: [videoId], references: [id])
+  /** Status: queued | processing | completed | failed */
+  status       String   @default("queued")
+  /** Comma-separated variants produced, e.g. "360p,720p,1080p,2160p" */
+  variants     String?
+  hlsUrl       String?
+  dashUrl      String?
+  /** ffmpeg progress percent 0-100 */
+  progressPct  Int      @default(0)
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([videoId])
+  @@map("transcodes")
+}
+
+model DubTrack {
+  id             String   @id @default(uuid())
+  videoId        String
+  video          Video    @relation(fields: [videoId], references: [id])
+  language       String
+  /** Status: pending | transcribing | translating | synthesizing | completed | failed */
+  status         String   @default("pending")
+  /** URL to the synthesized dubbed audio file */
+  audioUrl       String?
+  /** Whether this track was AI-generated */
+  isAiGenerated  Boolean  @default(true)
+  confidence     Float?
+  errorMessage   String?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([videoId])
+  @@index([language])
+  @@map("dub_tracks")
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  userId    String
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, videoId])
+  @@index([userId])
+  @@index([videoId])
+  @@map("likes")
+}
+
+model Playlist {
+  id          String          @id @default(uuid())
+  userId      String
+  title       String
+  description String?
+  isPublic    Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  items       PlaylistItem[]
+
+  @@index([userId])
+  @@map("playlists")
+}
+
+model PlaylistItem {
+  id         String   @id @default(uuid())
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id])
+  videoId    String
+  video      Video    @relation(fields: [videoId], references: [id])
+  position   Int      @default(0)
+  addedAt    DateTime @default(now())
+
+  @@unique([playlistId, videoId])
+  @@index([playlistId])
+  @@map("playlist_items")
+}
+
+model Recommendation {
+  id            String   @id @default(uuid())
+  userId        String
+  videoId       String
+  video         Video    @relation(fields: [videoId], references: [id])
+  /** Score computed by the hybrid recommender (0-1) */
+  score         Float
+  /** Source: content | collaborative | trending | hybrid */
+  source        String   @default("hybrid")
+  /** Reason shown to user or used for debugging */
+  reason        String?
+  /** Whether the user dismissed this recommendation */
+  dismissed     Boolean  @default(false)
+  generatedAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([videoId])
+  @@map("recommendations")
 }
