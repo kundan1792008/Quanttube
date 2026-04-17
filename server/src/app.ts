@@ -6,6 +6,7 @@ import reelsRoutes from "./routes/reels";
 import streamRoutes from "./routes/stream";
 import cinemaRoutes from "./routes/cinema";
 import feedRoutes from "./routes/feed";
+import videosRoutes, { playlistsRouter, recommendationsRouter } from "./routes/videos";
 import logger from "./logger";
 
 const app = express();
@@ -37,5 +38,14 @@ app.use("/api/v1/cinema", cinemaRoutes);
 
 /** Telepathic Feed Engine – cross-app signal ingestion + recommendations (v1) */
 app.use("/api/v1/feed", feedRoutes);
+
+/** Video pipeline: upload, transcode, dubbing, CRUD */
+app.use("/api/v1/videos", videosRoutes);
+
+/** Playlists */
+app.use("/api/v1/playlists", playlistsRouter);
+
+/** Hybrid recommendations */
+app.use("/api/v1/recommendations", recommendationsRouter);
 
 export default app;
