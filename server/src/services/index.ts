@@ -24,3 +24,22 @@ export {
   _resetTelepathicFeed,
 } from "./telepathic-feed";
 export type { CrossAppSignal, CrossAppSignalType, MediaRecommendation } from "./telepathic-feed";
+
+export {
+  getPreferences,
+  updatePreferences,
+  recordWatchSession,
+  getWatchSessions,
+  getStatus,
+  getInsights,
+  DEFAULT_PREFERENCES,
+  _resetWellbeing,
+} from "./wellbeing";
+export type {
+  WellbeingPreferences,
+  WatchSession,
+  WellbeingStatus,
+  WellbeingInsights,
+  RecordWatchSessionInput,
+  UpdatePreferencesPatch,
+} from "./wellbeing";
