@@ -27,6 +27,18 @@
  *   POST   /api/v1/videos/:id/dub         – start a dubbing pipeline
  *   GET    /api/v1/videos/:id/dub         – list dub jobs
  *
+ *   POST   /api/v1/videos/:id/scenes      – submit scene detection job
+ *   GET    /api/v1/videos/:id/scenes      – list scene detection jobs
+ *   GET    /api/v1/videos/:id/scenes/:jobId – get a scene detection job
+ *
+ *   POST   /api/v1/videos/:id/highlights  – submit highlight detection job
+ *   GET    /api/v1/videos/:id/highlights  – list highlight detection jobs
+ *   GET    /api/v1/videos/:id/highlights/:jobId – get a highlight detection job
+ *
+ *   POST   /api/v1/videos/:id/thumbnails  – submit thumbnail generation job
+ *   GET    /api/v1/videos/:id/thumbnails  – list thumbnail generation jobs
+ *   GET    /api/v1/videos/:id/thumbnails/:jobId – get a thumbnail generation job
+ *
  *   GET    /api/v1/recommendations/:userId – get hybrid recommendations
  */
 
@@ -40,6 +52,21 @@ import { translateSegments } from "../services/TranslationService";
 import { synthesizeAudio } from "../services/VoiceSynthesisService";
 import { getRecommendations, registerVideo } from "../services/HybridRecommender";
 import { recordInteraction } from "../services/CollaborativeRecommender";
+import {
+  submitSceneDetectionJob,
+  getSceneDetectionJob,
+  listSceneDetectionJobs,
+} from "../services/SceneDetector";
+import {
+  submitHighlightDetectionJob,
+  getHighlightDetectionJob,
+  listHighlightDetectionJobs,
+} from "../services/HighlightDetector";
+import {
+  submitThumbnailGenerationJob,
+  getThumbnailGenerationJob,
+  listThumbnailGenerationJobs,
+} from "../services/ThumbnailGenerator";
 
 const router = Router();
 
@@ -601,6 +628,180 @@ router.get("/:id/dub", (req: Request, res: Response) => {
 // Playlists (separate prefix /playlists is registered in app.ts)
 // This section handles playlist operations mounted at the videos router
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// AI Scene Understanding — Chapters, Highlights, Thumbnails
+// ---------------------------------------------------------------------------
+//
+//   POST /api/v1/videos/:id/scenes          – submit scene detection job
+//   GET  /api/v1/videos/:id/scenes          – list scene jobs for a video
+//   GET  /api/v1/videos/:id/scenes/:jobId   – get a specific scene job
+//
+//   POST /api/v1/videos/:id/highlights      – submit highlight detection job
+//   GET  /api/v1/videos/:id/highlights      – list highlight jobs
+//   GET  /api/v1/videos/:id/highlights/:jobId – get a specific highlight job
+//
+//   POST /api/v1/videos/:id/thumbnails      – submit thumbnail generation job
+//   GET  /api/v1/videos/:id/thumbnails      – list thumbnail jobs
+//   GET  /api/v1/videos/:id/thumbnails/:jobId – get a specific thumbnail job
+// ---------------------------------------------------------------------------
+
+const SceneDetectionRequestSchema = z.object({
+  videoDurationSecs: z.number().positive().optional(),
+  threshold: z.number().min(0).max(1).optional(),
+  transcriptSegments: z
+    .array(
+      z.object({
+        start: z.number(),
+        end: z.number(),
+        text: z.string(),
+      })
+    )
+    .optional(),
+});
+
+const HighlightDetectionRequestSchema = z.object({
+  videoDurationSecs: z.number().positive(),
+  maxHighlights: z.number().int().min(1).max(20).optional(),
+});
+
+const ThumbnailGenerationRequestSchema = z.object({
+  requests: z.array(
+    z.object({
+      sourceType: z.enum(["chapter", "highlight", "manual"]),
+      sourceId: z.string().min(1),
+      hintTimestampSecs: z.number().optional(),
+    })
+  ).min(1),
+});
+
+// ---- Scene detection routes --------------------------------------------
+
+router.post("/:id/scenes", (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id) {
+    res.status(400).json({ error: "videoId is required" });
+    return;
+  }
+
+  const parse = SceneDetectionRequestSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: parse.error.issues[0]?.message });
+    return;
+  }
+
+  const job = submitSceneDetectionJob({
+    videoId: id,
+    videoDurationSecs: parse.data.videoDurationSecs,
+    threshold: parse.data.threshold,
+    transcriptSegments: parse.data.transcriptSegments,
+  });
+
+  logger.info({ jobId: job.jobId, videoId: id }, "Scene detection job submitted");
+  res.status(202).json(job);
+});
+
+router.get("/:id/scenes", (req: Request, res: Response) => {
+  const { id } = req.params;
+  const jobs = listSceneDetectionJobs(id);
+  res.json({ videoId: id, total: jobs.length, jobs });
+});
+
+router.get("/:id/scenes/:jobId", (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const job = getSceneDetectionJob(jobId!);
+  if (!job) {
+    res.status(404).json({ error: `Scene detection job '${jobId}' not found` });
+    return;
+  }
+  res.json(job);
+});
+
+// ---- Highlight detection routes ----------------------------------------
+
+router.post("/:id/highlights", (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id) {
+    res.status(400).json({ error: "videoId is required" });
+    return;
+  }
+
+  const parse = HighlightDetectionRequestSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: parse.error.issues[0]?.message });
+    return;
+  }
+
+  const job = submitHighlightDetectionJob({
+    videoId: id,
+    videoDurationSecs: parse.data.videoDurationSecs,
+    maxHighlights: parse.data.maxHighlights,
+  });
+
+  logger.info({ jobId: job.jobId, videoId: id }, "Highlight detection job submitted");
+  res.status(202).json(job);
+});
+
+router.get("/:id/highlights", (req: Request, res: Response) => {
+  const { id } = req.params;
+  const jobs = listHighlightDetectionJobs(id);
+  res.json({ videoId: id, total: jobs.length, jobs });
+});
+
+router.get("/:id/highlights/:jobId", (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const job = getHighlightDetectionJob(jobId!);
+  if (!job) {
+    res.status(404).json({ error: `Highlight detection job '${jobId}' not found` });
+    return;
+  }
+  res.json(job);
+});
+
+// ---- Thumbnail generation routes ---------------------------------------
+
+router.post("/:id/thumbnails", (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id) {
+    res.status(400).json({ error: "videoId is required" });
+    return;
+  }
+
+  const parse = ThumbnailGenerationRequestSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: parse.error.issues[0]?.message });
+    return;
+  }
+
+  const job = submitThumbnailGenerationJob({
+    videoId: id,
+    requests: parse.data.requests.map((r) => ({
+      videoId: id,
+      sourceType: r.sourceType,
+      sourceId: r.sourceId,
+      hintTimestampSecs: r.hintTimestampSecs,
+    })),
+  });
+
+  logger.info({ jobId: job.jobId, videoId: id }, "Thumbnail generation job submitted");
+  res.status(202).json(job);
+});
+
+router.get("/:id/thumbnails", (req: Request, res: Response) => {
+  const { id } = req.params;
+  const jobs = listThumbnailGenerationJobs(id);
+  res.json({ videoId: id, total: jobs.length, jobs });
+});
+
+router.get("/:id/thumbnails/:jobId", (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const job = getThumbnailGenerationJob(jobId!);
+  if (!job) {
+    res.status(404).json({ error: `Thumbnail generation job '${jobId}' not found` });
+    return;
+  }
+  res.json(job);
+});
 
 export default router;
 
