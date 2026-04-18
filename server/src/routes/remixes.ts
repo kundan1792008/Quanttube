@@ -1,707 +1,391 @@
 /**
- * Remix API routes.
+ * remixes.ts – REST API for the AI Video Remix Engine.
  *
- *   POST   /api/remixes/style-transfer          – apply style to video
- *   POST   /api/remixes/background-swap         – AI background replacement
- *   POST   /api/remixes/alternate-ending        – generate alternate ending
- *   POST   /api/remixes/visual-effects          – add visual effects
- *   GET    /api/remixes/jobs/:jobId             – get a remix job
- *   GET    /api/remixes/videos/:videoId/jobs    – list jobs for a video
+ * Mounted under `/api/remixes`.
  *
- *   POST   /api/remixes/audio/music             – change background music
- *   POST   /api/remixes/audio/sfx               – add SFX at timestamps
- *   POST   /api/remixes/audio/speed             – time-stretch speed change
- *   POST   /api/remixes/audio/voice-clone       – re-dub with cloned voice
- *   GET    /api/remixes/audio/jobs/:jobId       – get an audio job
- *   GET    /api/remixes/audio/videos/:videoId/jobs – list audio jobs for a video
+ * Video remix jobs (queue-based, async):
+ *   POST   /api/remixes/style                  – start style-transfer job
+ *   POST   /api/remixes/background             – start background-swap job
+ *   POST   /api/remixes/ending                 – start alternate-ending job
+ *   POST   /api/remixes/effects                – start visual-effects job
+ *   GET    /api/remixes/jobs                   – list remix jobs (filter by videoId/type/status)
+ *   GET    /api/remixes/jobs/:jobId            – get remix job status
  *
- *   GET    /api/remixes/trending                – trending remixes feed
- *   GET    /api/remixes/chains/:originalVideoId – remix chain for a video
- *   GET    /api/remixes/:remixId/attribution    – attribution for a remix
- *   POST   /api/remixes/:remixId/publish        – one-click publish
+ * Audio remix jobs:
+ *   POST   /api/remixes/audio/music            – change background music by genre
+ *   POST   /api/remixes/audio/sfx              – add SFX at timestamps
+ *   POST   /api/remixes/audio/speed            – time-stretch (pitch-preserved)
+ *   POST   /api/remixes/audio/voice            – voice-clone re-dub
+ *   GET    /api/remixes/audio/jobs             – list audio jobs
+ *   GET    /api/remixes/audio/jobs/:jobId      – get audio job status
+ *
+ * Publish / discover:
+ *   POST   /api/remixes/jobs/:jobId/publish    – publish a completed remix
+ *   GET    /api/remixes/trending               – trending published remixes
+ *   GET    /api/remixes/chains/:originalVideoId – all remixes derived from an original
+ *   GET    /api/remixes/published/:remixId     – get one published remix (bumps viewCount)
+ *
+ * Catalogues (for UI pickers):
+ *   GET    /api/remixes/meta/styles
+ *   GET    /api/remixes/meta/backgrounds
+ *   GET    /api/remixes/meta/effects
+ *   GET    /api/remixes/meta/genres
+ *   GET    /api/remixes/meta/sfx
+ *   GET    /api/remixes/meta/voices
  */
 
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import { v4 as uuidv4 } from "uuid";
 import logger from "../logger";
 import {
+  STYLE_PRESETS,
+  BACKGROUND_PRESETS,
+  VISUAL_EFFECTS,
   applyStyleTransfer,
   swapBackground,
   generateAlternateEnding,
   addVisualEffects,
   getRemixJob,
   listRemixJobs,
-  STYLE_PRESETS,
-  VISUAL_EFFECTS,
-  BACKGROUND_PRESETS,
-  StylePreset,
-  VisualEffect,
+  publishRemix,
+  getTrendingRemixes,
+  getRemixChain,
+  getPublishedRemix,
+  incrementRemixViewCount,
+  RemixJobType,
+  RemixJobStatus,
 } from "../services/RemixEngine";
 import {
+  MUSIC_GENRES,
+  SFX_IDS,
+  VOICE_BANK,
   changeMusic,
   addSoundEffects,
   speedChange,
   voiceClone,
   getAudioJob,
   listAudioJobs,
-  MUSIC_GENRES,
-  SOUND_EFFECTS,
-  MusicGenre,
-  SoundEffectId,
+  AudioJobType,
+  AudioJobStatus,
 } from "../services/AudioRemixService";
 
 const router = Router();
 
 // ---------------------------------------------------------------------------
-// Zod schemas – video remix
+// Schemas
 // ---------------------------------------------------------------------------
 
-const StyleTransferSchema = z.object({
-  videoId: z.string().min(1, "videoId is required"),
-  style: z.enum(STYLE_PRESETS as unknown as [StylePreset, ...StylePreset[]]),
+const VideoIdField = z.string().min(1, "videoId is required").max(200);
+
+const StyleRequest = z.object({
+  videoId: VideoIdField,
+  style: z.enum(STYLE_PRESETS),
 });
 
-const BackgroundSwapSchema = z.object({
-  videoId: z.string().min(1, "videoId is required"),
-  newBackground: z.string().min(1, "newBackground is required"),
+const BackgroundRequest = z.object({
+  videoId: VideoIdField,
+  newBackground: z.string().min(1).max(500),
 });
 
-const AlternateEndingSchema = z.object({
-  videoId: z.string().min(1, "videoId is required"),
-  prompt: z
-    .string()
-    .min(1, "prompt is required")
-    .max(500, "prompt must be 500 characters or fewer"),
+const EndingRequest = z.object({
+  videoId: VideoIdField,
+  prompt: z.string().max(500),
 });
 
-const VisualEffectsSchema = z.object({
-  videoId: z.string().min(1, "videoId is required"),
+const EffectsRequest = z.object({
+  videoId: VideoIdField,
   effects: z
-    .array(z.enum(VISUAL_EFFECTS as unknown as [VisualEffect, ...VisualEffect[]]))
-    .min(1, "effects must contain at least one item"),
+    .array(z.enum(VISUAL_EFFECTS))
+    .min(1, "effects must contain at least one entry")
+    .max(VISUAL_EFFECTS.length),
 });
 
-// ---------------------------------------------------------------------------
-// Zod schemas – audio remix
-// ---------------------------------------------------------------------------
-
-const MusicChangeSchema = z.object({
-  videoId: z.string().min(1, "videoId is required"),
-  genre: z.enum(MUSIC_GENRES as unknown as [MusicGenre, ...MusicGenre[]]),
+const MusicRequest = z.object({
+  videoId: VideoIdField,
+  genre: z.enum(MUSIC_GENRES),
 });
 
-const SfxTimestampSchema = z.object({
-  timestampSeconds: z.number().min(0, "timestampSeconds must be non-negative"),
-  effectId: z.enum(SOUND_EFFECTS as unknown as [SoundEffectId, ...SoundEffectId[]]),
-  volume: z.number().min(0).max(2).optional(),
+const SfxRequest = z.object({
+  videoId: VideoIdField,
+  entries: z
+    .array(
+      z.object({
+        timestampSecs: z.number().nonnegative(),
+        effectId: z.enum(SFX_IDS),
+        volumeDb: z.number().min(-24).max(12).optional(),
+      }),
+    )
+    .min(1)
+    .max(100),
 });
 
-const SfxInjectionSchema = z.object({
-  videoId: z.string().min(1, "videoId is required"),
-  timestamps: z.array(SfxTimestampSchema).min(1, "timestamps must contain at least one item"),
-});
-
-const SpeedChangeSchema = z.object({
-  videoId: z.string().min(1, "videoId is required"),
+const SpeedRequest = z.object({
+  videoId: VideoIdField,
   factor: z.number().min(0.25).max(4.0),
 });
 
-const VoiceCloneSchema = z.object({
-  videoId: z.string().min(1, "videoId is required"),
-  targetVoiceId: z.string().min(1, "targetVoiceId is required"),
+const VoiceRequest = z.object({
+  videoId: VideoIdField,
+  targetVoiceId: z.enum(VOICE_BANK),
 });
 
-// ---------------------------------------------------------------------------
-// Zod schemas – publish & trending
-// ---------------------------------------------------------------------------
-
-const PublishSchema = z.object({
-  title: z.string().min(1, "title is required").max(200),
+const PublishRequest = z.object({
+  title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
-  tags: z.array(z.string()).max(20).optional(),
-  originalVideoId: z.string().min(1, "originalVideoId is required"),
-  originalCreatorHandle: z.string().min(1, "originalCreatorHandle is required"),
+  tags: z.array(z.string().min(1).max(50)).max(20).optional(),
+  originalCreatorHandle: z.string().min(1).max(100).optional(),
 });
 
 // ---------------------------------------------------------------------------
-// In-memory published-remixes store
+// Helpers
 // ---------------------------------------------------------------------------
 
-interface PublishedRemix {
-  remixId: string;
-  jobId: string;
-  jobType: string;
-  videoId: string;
-  title: string;
-  description: string;
-  tags: string[];
-  originalVideoId: string;
-  originalCreatorHandle: string;
-  publishedAt: string;
-  viewCount: number;
-  likeCount: number;
-  remixCount: number;
-  outputUrl: string | null;
-}
-
-const publishedRemixes = new Map<string, PublishedRemix>();
-
-/** Generate deterministic trending seed data for demo purposes. */
-function seedTrendingRemixes(): void {
-  if (publishedRemixes.size > 0) return;
-
-  const seeds: Array<Omit<PublishedRemix, "publishedAt">> = [
-    {
-      remixId: "remix-trending-001",
-      jobId: "job-001",
-      jobType: "style-transfer",
-      videoId: "video-001",
-      title: "Cyberpunk City Chase – Anime Edition",
-      description: "Original car chase remixed into anime style",
-      tags: ["anime", "action", "cyberpunk"],
-      originalVideoId: "video-001",
-      originalCreatorHandle: "@speedrunner",
-      viewCount: 124_500,
-      likeCount: 8_340,
-      remixCount: 42,
-      outputUrl: "https://cdn.quanttube.app/remixes/style-transfer/job-001/output.mp4",
-    },
-    {
-      remixId: "remix-trending-002",
-      jobId: "job-002",
-      jobType: "visual-effects",
-      videoId: "video-002",
-      title: "Concert Footage + VHS Glitch",
-      description: "Live concert remixed with retro VHS scan lines and glitch effects",
-      tags: ["music", "retro", "vhs", "glitch"],
-      originalVideoId: "video-002",
-      originalCreatorHandle: "@stagemaster",
-      viewCount: 98_200,
-      likeCount: 6_110,
-      remixCount: 29,
-      outputUrl: "https://cdn.quanttube.app/remixes/visual-effects/job-002/output.mp4",
-    },
-    {
-      remixId: "remix-trending-003",
-      jobId: "job-003",
-      jobType: "music-change",
-      videoId: "video-003",
-      title: "Travel Vlog + Synthwave Soundtrack",
-      description: "Tokyo travel vlog with the original music replaced by synthwave",
-      tags: ["travel", "synthwave", "tokyo"],
-      originalVideoId: "video-003",
-      originalCreatorHandle: "@wanderlustvids",
-      viewCount: 75_600,
-      likeCount: 5_090,
-      remixCount: 17,
-      outputUrl: "https://cdn.quanttube.app/audio-remixes/music-change/job-003/output.mp4",
-    },
-    {
-      remixId: "remix-trending-004",
-      jobId: "job-004",
-      jobType: "alternate-ending",
-      videoId: "video-004",
-      title: "Short Film – The Other Path",
-      description: "AI-generated alternate ending where the hero chooses differently",
-      tags: ["shortfilm", "drama", "ai-generated"],
-      originalVideoId: "video-004",
-      originalCreatorHandle: "@indiestudios",
-      viewCount: 61_000,
-      likeCount: 4_830,
-      remixCount: 11,
-      outputUrl: "https://cdn.quanttube.app/remixes/alternate-ending/job-004/output.mp4",
-    },
-    {
-      remixId: "remix-trending-005",
-      jobId: "job-005",
-      jobType: "background-swap",
-      videoId: "video-005",
-      title: "Home Workout in Space",
-      description: "Indoor workout video with background swapped to outer space",
-      tags: ["fitness", "space", "comedy"],
-      originalVideoId: "video-005",
-      originalCreatorHandle: "@fitnessguru",
-      viewCount: 53_400,
-      likeCount: 3_970,
-      remixCount: 8,
-      outputUrl: "https://cdn.quanttube.app/remixes/background-swap/job-005/output.mp4",
-    },
-  ];
-
-  const baseDate = new Date("2026-04-01T00:00:00.000Z");
-  seeds.forEach((seed, i) => {
-    const publishedAt = new Date(baseDate.getTime() - i * 24 * 60 * 60 * 1000).toISOString();
-    publishedRemixes.set(seed.remixId, { ...seed, publishedAt });
+function sendZodError(res: Response, err: z.ZodError): void {
+  res.status(400).json({
+    error: err.issues[0]?.message ?? "Invalid request body",
+    details: err.issues,
   });
 }
 
-// Seed on module load.
-seedTrendingRemixes();
+function handleThrown(res: Response, err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  res.status(400).json({ error: msg });
+}
 
 // ---------------------------------------------------------------------------
-// Video remix endpoints
+// Video remix job routes
 // ---------------------------------------------------------------------------
 
-/**
- * POST /api/remixes/style-transfer
- * Apply a visual style (anime, noir, etc.) to the entire video.
- */
-router.post("/style-transfer", (req: Request, res: Response) => {
-  const parse = StyleTransferSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
+router.post("/style", (req: Request, res: Response) => {
+  const parse = StyleRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
+  try {
+    const job = applyStyleTransfer(parse.data.videoId, parse.data.style);
+    logger.info({ jobId: job.jobId, videoId: job.videoId }, "Remix style-transfer queued");
+    res.status(202).json(job);
+  } catch (err) {
+    handleThrown(res, err);
   }
-
-  const result = applyStyleTransfer(parse.data.videoId, parse.data.style);
-  if (!("jobId" in result)) {
-    res.status(400).json(result);
-    return;
-  }
-
-  logger.info({ jobId: result.jobId, videoId: result.videoId, style: result.style }, "style-transfer job created");
-  res.status(202).json(result);
 });
 
-/**
- * POST /api/remixes/background-swap
- * AI-powered background removal and compositing.
- */
-router.post("/background-swap", (req: Request, res: Response) => {
-  const parse = BackgroundSwapSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
+router.post("/background", (req: Request, res: Response) => {
+  const parse = BackgroundRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
+  try {
+    const job = swapBackground(parse.data.videoId, parse.data.newBackground);
+    logger.info({ jobId: job.jobId, videoId: job.videoId }, "Remix background-swap queued");
+    res.status(202).json(job);
+  } catch (err) {
+    handleThrown(res, err);
   }
-
-  const result = swapBackground(parse.data.videoId, parse.data.newBackground);
-  if (!("jobId" in result)) {
-    res.status(400).json(result);
-    return;
-  }
-
-  logger.info({ jobId: result.jobId, videoId: result.videoId }, "background-swap job created");
-  res.status(202).json(result);
 });
 
-/**
- * POST /api/remixes/alternate-ending
- * Generate a new ending using a text prompt.
- */
-router.post("/alternate-ending", (req: Request, res: Response) => {
-  const parse = AlternateEndingSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
+router.post("/ending", (req: Request, res: Response) => {
+  const parse = EndingRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
+  try {
+    const job = generateAlternateEnding(parse.data.videoId, parse.data.prompt);
+    logger.info({ jobId: job.jobId, videoId: job.videoId }, "Remix alternate-ending queued");
+    res.status(202).json(job);
+  } catch (err) {
+    handleThrown(res, err);
   }
-
-  const result = generateAlternateEnding(parse.data.videoId, parse.data.prompt);
-  if (!("jobId" in result)) {
-    res.status(400).json(result);
-    return;
-  }
-
-  logger.info({ jobId: result.jobId, videoId: result.videoId }, "alternate-ending job created");
-  res.status(202).json(result);
 });
 
-/**
- * POST /api/remixes/visual-effects
- * Add one or more visual effects (rain, snow, fire, glitch, etc.).
- */
-router.post("/visual-effects", (req: Request, res: Response) => {
-  const parse = VisualEffectsSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
+router.post("/effects", (req: Request, res: Response) => {
+  const parse = EffectsRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
+  try {
+    const job = addVisualEffects(parse.data.videoId, parse.data.effects);
+    logger.info({ jobId: job.jobId, videoId: job.videoId }, "Remix visual-effects queued");
+    res.status(202).json(job);
+  } catch (err) {
+    handleThrown(res, err);
   }
-
-  const result = addVisualEffects(parse.data.videoId, parse.data.effects);
-  if (!("jobId" in result)) {
-    res.status(400).json(result);
-    return;
-  }
-
-  logger.info({ jobId: result.jobId, videoId: result.videoId, effects: result.effects }, "visual-effects job created");
-  res.status(202).json(result);
 });
 
-/**
- * GET /api/remixes/jobs/:jobId
- * Retrieve a video remix job by ID.
- */
+router.get("/jobs", (req: Request, res: Response) => {
+  const { videoId, type, status } = req.query as Record<string, string | undefined>;
+  const jobs = listRemixJobs({
+    videoId,
+    type: type as RemixJobType | undefined,
+    status: status as RemixJobStatus | undefined,
+  });
+  res.json({ total: jobs.length, items: jobs });
+});
+
 router.get("/jobs/:jobId", (req: Request, res: Response) => {
   const { jobId } = req.params;
-  if (!jobId) {
-    res.status(400).json({ error: "jobId is required" });
-    return;
-  }
-
-  const job = getRemixJob(jobId);
+  const job = getRemixJob(jobId!);
   if (!job) {
-    res.status(404).json({ error: `Remix job ${jobId} not found` });
+    res.status(404).json({ error: `Remix job '${jobId}' not found` });
     return;
   }
-
   res.json(job);
 });
 
-/**
- * GET /api/remixes/videos/:videoId/jobs
- * List all remix jobs for a specific video.
- */
-router.get("/videos/:videoId/jobs", (req: Request, res: Response) => {
-  const { videoId } = req.params;
-  if (!videoId) {
-    res.status(400).json({ error: "videoId is required" });
-    return;
-  }
-
-  const jobs = listRemixJobs({ videoId });
-  res.json({ videoId, count: jobs.length, jobs });
-});
-
 // ---------------------------------------------------------------------------
-// Audio remix endpoints
+// Audio remix job routes
 // ---------------------------------------------------------------------------
 
-/**
- * POST /api/remixes/audio/music
- * Replace background music while preserving speech.
- */
 router.post("/audio/music", (req: Request, res: Response) => {
-  const parse = MusicChangeSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
+  const parse = MusicRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
+  try {
+    const job = changeMusic(parse.data.videoId, parse.data.genre);
+    res.status(202).json(job);
+  } catch (err) {
+    handleThrown(res, err);
   }
-
-  const result = changeMusic(parse.data.videoId, parse.data.genre);
-  if (!("jobId" in result)) {
-    res.status(400).json(result);
-    return;
-  }
-
-  logger.info({ jobId: result.jobId, videoId: result.videoId, genre: result.genre }, "music-change job created");
-  res.status(202).json(result);
 });
 
-/**
- * POST /api/remixes/audio/sfx
- * Add SFX at specific timestamps.
- */
 router.post("/audio/sfx", (req: Request, res: Response) => {
-  const parse = SfxInjectionSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
+  const parse = SfxRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
+  try {
+    const job = addSoundEffects(parse.data.videoId, parse.data.entries);
+    res.status(202).json(job);
+  } catch (err) {
+    handleThrown(res, err);
   }
-
-  const result = addSoundEffects(parse.data.videoId, parse.data.timestamps);
-  if (!("jobId" in result)) {
-    res.status(400).json(result);
-    return;
-  }
-
-  logger.info({ jobId: result.jobId, videoId: result.videoId }, "sfx-injection job created");
-  res.status(202).json(result);
 });
 
-/**
- * POST /api/remixes/audio/speed
- * Time-stretch without pitch change.
- */
 router.post("/audio/speed", (req: Request, res: Response) => {
-  const parse = SpeedChangeSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
+  const parse = SpeedRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
+  try {
+    const job = speedChange(parse.data.videoId, parse.data.factor);
+    res.status(202).json(job);
+  } catch (err) {
+    handleThrown(res, err);
   }
-
-  const result = speedChange(parse.data.videoId, parse.data.factor);
-  if (!("jobId" in result)) {
-    res.status(400).json(result);
-    return;
-  }
-
-  logger.info({ jobId: result.jobId, videoId: result.videoId, factor: result.factor }, "speed-change job created");
-  res.status(202).json(result);
 });
 
-/**
- * POST /api/remixes/audio/voice-clone
- * Re-dub with a different voice while maintaining lip sync.
- */
-router.post("/audio/voice-clone", (req: Request, res: Response) => {
-  const parse = VoiceCloneSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
+router.post("/audio/voice", (req: Request, res: Response) => {
+  const parse = VoiceRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
+  try {
+    const job = voiceClone(parse.data.videoId, parse.data.targetVoiceId);
+    res.status(202).json(job);
+  } catch (err) {
+    handleThrown(res, err);
   }
-
-  const result = voiceClone(parse.data.videoId, parse.data.targetVoiceId);
-  if (!("jobId" in result)) {
-    res.status(400).json(result);
-    return;
-  }
-
-  logger.info({ jobId: result.jobId, videoId: result.videoId, targetVoiceId: result.targetVoiceId }, "voice-clone job created");
-  res.status(202).json(result);
 });
 
-/**
- * GET /api/remixes/audio/jobs/:jobId
- * Retrieve an audio remix job by ID.
- */
+router.get("/audio/jobs", (req: Request, res: Response) => {
+  const { videoId, type, status } = req.query as Record<string, string | undefined>;
+  const jobs = listAudioJobs({
+    videoId,
+    type: type as AudioJobType | undefined,
+    status: status as AudioJobStatus | undefined,
+  });
+  res.json({ total: jobs.length, items: jobs });
+});
+
 router.get("/audio/jobs/:jobId", (req: Request, res: Response) => {
   const { jobId } = req.params;
-  if (!jobId) {
-    res.status(400).json({ error: "jobId is required" });
-    return;
-  }
-
-  const job = getAudioJob(jobId);
+  const job = getAudioJob(jobId!);
   if (!job) {
-    res.status(404).json({ error: `Audio job ${jobId} not found` });
+    res.status(404).json({ error: `Audio remix job '${jobId}' not found` });
     return;
   }
-
   res.json(job);
 });
 
-/**
- * GET /api/remixes/audio/videos/:videoId/jobs
- * List audio remix jobs for a specific video.
- */
-router.get("/audio/videos/:videoId/jobs", (req: Request, res: Response) => {
-  const { videoId } = req.params;
-  if (!videoId) {
-    res.status(400).json({ error: "videoId is required" });
-    return;
-  }
-
-  const jobs = listAudioJobs({ videoId });
-  res.json({ videoId, count: jobs.length, jobs });
-});
-
 // ---------------------------------------------------------------------------
-// Trending remixes feed
+// Publish / discover
 // ---------------------------------------------------------------------------
 
-/**
- * GET /api/remixes/trending
- * Return the most popular published remixes sorted by view count.
- */
-router.get("/trending", (_req: Request, res: Response) => {
-  const trending = Array.from(publishedRemixes.values())
-    .sort((a, b) => b.viewCount - a.viewCount)
-    .map((remix) => ({
-      remixId: remix.remixId,
-      title: remix.title,
-      description: remix.description,
-      tags: remix.tags,
-      jobType: remix.jobType,
-      outputUrl: remix.outputUrl,
-      attribution: {
-        originalVideoId: remix.originalVideoId,
-        originalCreatorHandle: remix.originalCreatorHandle,
-        label: `Remixed from ${remix.originalCreatorHandle}`,
-      },
-      stats: {
-        viewCount: remix.viewCount,
-        likeCount: remix.likeCount,
-        remixCount: remix.remixCount,
-      },
-      publishedAt: remix.publishedAt,
-    }));
+router.post("/jobs/:jobId/publish", (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const parse = PublishRequest.safeParse(req.body);
+  if (!parse.success) return sendZodError(res, parse.error);
 
-  res.json({ count: trending.length, remixes: trending });
-});
-
-// ---------------------------------------------------------------------------
-// Remix chains
-// ---------------------------------------------------------------------------
-
-/**
- * GET /api/remixes/chains/:originalVideoId
- * Return all remixes that trace back to a given original video.
- */
-router.get("/chains/:originalVideoId", (req: Request, res: Response) => {
-  const { originalVideoId } = req.params;
-  if (!originalVideoId) {
-    res.status(400).json({ error: "originalVideoId is required" });
-    return;
-  }
-
-  const chain = Array.from(publishedRemixes.values())
-    .filter((r) => r.originalVideoId === originalVideoId)
-    .sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime())
-    .map((remix) => ({
-      remixId: remix.remixId,
-      title: remix.title,
-      jobType: remix.jobType,
-      outputUrl: remix.outputUrl,
-      attribution: {
-        originalVideoId: remix.originalVideoId,
-        originalCreatorHandle: remix.originalCreatorHandle,
-        label: `Remixed from ${remix.originalCreatorHandle}`,
-      },
-      stats: {
-        viewCount: remix.viewCount,
-        likeCount: remix.likeCount,
-        remixCount: remix.remixCount,
-      },
-      publishedAt: remix.publishedAt,
-    }));
-
-  res.json({ originalVideoId, chainLength: chain.length, chain });
-});
-
-// ---------------------------------------------------------------------------
-// Attribution
-// ---------------------------------------------------------------------------
-
-/**
- * GET /api/remixes/:remixId/attribution
- * Return attribution details for a specific remix.
- */
-router.get("/:remixId/attribution", (req: Request, res: Response) => {
-  const { remixId } = req.params;
-  const remix = publishedRemixes.get(remixId);
-  if (!remix) {
-    res.status(404).json({ error: `Remix ${remixId} not found` });
-    return;
-  }
-
-  res.json({
-    remixId: remix.remixId,
-    title: remix.title,
-    originalVideoId: remix.originalVideoId,
-    originalCreatorHandle: remix.originalCreatorHandle,
-    label: `Remixed from ${remix.originalCreatorHandle}`,
-    deepLink: `https://quanttube.app/watch/${remix.originalVideoId}`,
-    publishedAt: remix.publishedAt,
-  });
-});
-
-// ---------------------------------------------------------------------------
-// One-click publish
-// ---------------------------------------------------------------------------
-
-/**
- * POST /api/remixes/:remixId/publish
- * Publish a completed remix to the Quanttube feed.
- */
-router.post("/:remixId/publish", (req: Request, res: Response) => {
-  const { remixId } = req.params;
-
-  const parse = PublishSchema.safeParse(req.body);
-  if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
-    return;
-  }
-
-  // Check if this remixId is a valid job in either store.
-  const videoJob = getRemixJob(remixId);
-  const audioJob = getAudioJob(remixId);
-  const job = videoJob ?? audioJob;
-
+  const job = getRemixJob(jobId!);
   if (!job) {
-    // Allow publishing ad-hoc remixes that aren't tracked (e.g. uploaded externally)
-    // by accepting the provided remixId directly.
-    if (!remixId || !remixId.trim()) {
-      res.status(400).json({ error: "remixId is required" });
+    res.status(404).json({ error: `Remix job '${jobId}' not found` });
+    return;
+  }
+  if (job.status !== "completed") {
+    res
+      .status(409)
+      .json({ error: `Remix job '${jobId}' is not completed (status: ${job.status})` });
+    return;
+  }
+
+  try {
+    const published = publishRemix(jobId!, parse.data);
+    logger.info({ remixId: published.remixId, jobId }, "Remix published");
+    res.status(201).json(published);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Duplicate-publish and similar lifecycle violations → 409.
+    if (/already been published/i.test(msg)) {
+      res.status(409).json({ error: msg });
       return;
     }
+    if (/not completed/i.test(msg)) {
+      res.status(409).json({ error: msg });
+      return;
+    }
+    if (/not found/i.test(msg)) {
+      res.status(404).json({ error: msg });
+      return;
+    }
+    res.status(400).json({ error: msg });
   }
+});
 
-  if (job && job.status !== "completed") {
-    res.status(409).json({
-      error: `Cannot publish: job ${remixId} is in status "${job.status}". Wait for completion.`,
-    });
+router.get("/trending", (req: Request, res: Response) => {
+  const limitRaw = typeof req.query.limit === "string" ? req.query.limit : "20";
+  const limit = Math.max(1, Math.min(100, parseInt(limitRaw, 10) || 20));
+  const items = getTrendingRemixes(limit).map((r) => ({
+    ...r,
+    attribution: r.originalCreatorHandle
+      ? `Remixed from @${r.originalCreatorHandle}`
+      : `Remixed from video ${r.originalVideoId}`,
+  }));
+  res.json({ total: items.length, items });
+});
+
+router.get("/chains/:originalVideoId", (req: Request, res: Response) => {
+  const { originalVideoId } = req.params;
+  const items = getRemixChain(originalVideoId!);
+  res.json({ originalVideoId, total: items.length, items });
+});
+
+router.get("/published/:remixId", (req: Request, res: Response) => {
+  const { remixId } = req.params;
+  const r = getPublishedRemix(remixId!);
+  if (!r) {
+    res.status(404).json({ error: `Published remix '${remixId}' not found` });
     return;
   }
-
-  if (publishedRemixes.has(remixId)) {
-    res.status(409).json({ error: "Remix is already published" });
-    return;
-  }
-
-  const published: PublishedRemix = {
-    remixId,
-    jobId: remixId,
-    jobType: job?.type ?? "unknown",
-    videoId: job?.videoId ?? parse.data.originalVideoId,
-    title: parse.data.title,
-    description: parse.data.description ?? "",
-    tags: parse.data.tags ?? [],
-    originalVideoId: parse.data.originalVideoId,
-    originalCreatorHandle: parse.data.originalCreatorHandle,
-    publishedAt: new Date().toISOString(),
-    viewCount: 0,
-    likeCount: 0,
-    remixCount: 0,
-    outputUrl: job?.outputUrl ?? null,
-  };
-
-  publishedRemixes.set(remixId, published);
-  logger.info({ remixId, videoId: published.videoId }, "remix published");
-  res.status(201).json(published);
+  const updated = incrementRemixViewCount(remixId!) ?? r;
+  res.json(updated);
 });
 
 // ---------------------------------------------------------------------------
-// Metadata helpers (available constants)
+// Catalogues
 // ---------------------------------------------------------------------------
 
-/**
- * GET /api/remixes/meta/styles
- * List all available style presets.
- */
 router.get("/meta/styles", (_req: Request, res: Response) => {
-  res.json({ count: STYLE_PRESETS.length, styles: [...STYLE_PRESETS] });
+  res.json({ items: STYLE_PRESETS });
 });
-
-/**
- * GET /api/remixes/meta/effects
- * List all available visual effects.
- */
-router.get("/meta/effects", (_req: Request, res: Response) => {
-  res.json({ count: VISUAL_EFFECTS.length, effects: [...VISUAL_EFFECTS] });
-});
-
-/**
- * GET /api/remixes/meta/backgrounds
- * List all available background presets.
- */
 router.get("/meta/backgrounds", (_req: Request, res: Response) => {
-  res.json({ count: BACKGROUND_PRESETS.length, backgrounds: [...BACKGROUND_PRESETS] });
+  res.json({ items: BACKGROUND_PRESETS });
+});
+router.get("/meta/effects", (_req: Request, res: Response) => {
+  res.json({ items: VISUAL_EFFECTS });
+});
+router.get("/meta/genres", (_req: Request, res: Response) => {
+  res.json({ items: MUSIC_GENRES });
+});
+router.get("/meta/sfx", (_req: Request, res: Response) => {
+  res.json({ items: SFX_IDS });
+});
+router.get("/meta/voices", (_req: Request, res: Response) => {
+  res.json({ items: VOICE_BANK });
 });
 
-/**
- * GET /api/remixes/meta/music-genres
- * List all available music genres.
- */
-router.get("/meta/music-genres", (_req: Request, res: Response) => {
-  res.json({ count: MUSIC_GENRES.length, genres: [...MUSIC_GENRES] });
-});
-
-/**
- * GET /api/remixes/meta/sound-effects
- * List all available sound effects.
- */
-router.get("/meta/sound-effects", (_req: Request, res: Response) => {
-  res.json({ count: SOUND_EFFECTS.length, soundEffects: [...SOUND_EFFECTS] });
-});
-
-// ---------------------------------------------------------------------------
-// Test helper
-// ---------------------------------------------------------------------------
-
-export function _resetPublishedRemixes(): void {
-  publishedRemixes.clear();
-  seedTrendingRemixes();
-}
-
-export { uuidv4 };
 export default router;

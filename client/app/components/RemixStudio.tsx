@@ -1,1271 +1,946 @@
-/**
- * RemixStudio – AI Video Remix Studio component.
- *
- * Features:
- *  • Side-by-side preview: original vs. remixed video
- *  • Effect picker with thumbnail previews (style, visual effects, background, audio)
- *  • Timeline with effect placement for SFX injection
- *  • "Randomize" button for surprise remixes
- *  • One-click publish to Quanttube feed
- *  • Live WebSocket-style progress polling
- */
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import styles from "./RemixStudio.module.css";
+/**
+ * RemixStudio – UI for the AI Video Remix Engine.
+ *
+ * Features:
+ *   • Side-by-side preview (original ↔ remix) with Framer Motion transitions
+ *   • Tabbed picker: Style · Background · Alternate Ending · Effects · Audio
+ *   • SFX timeline (add at timestamp, per-entry volume)
+ *   • Live progress indicator with job-specific details (script, lip-sync, …)
+ *   • 🎲 Randomize button for surprise remixes
+ *   • One-click publish form (title / description / tags / creator handle)
+ *
+ * All server calls go through the `/api/remixes` endpoints exposed by the
+ * server package.
+ */
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 
 // ---------------------------------------------------------------------------
-// Config
+// Types mirrored from server/src/services/RemixEngine.ts + AudioRemixService
 // ---------------------------------------------------------------------------
 
-const API_BASE = process.env.NEXT_PUBLIC_QUANTTUBE_API_BASE_URL ?? "http://localhost:4000";
+type RemixJobType =
+  | "style-transfer"
+  | "background-swap"
+  | "alternate-ending"
+  | "visual-effects";
+type AudioJobType = "music-change" | "sfx-add" | "speed-change" | "voice-clone";
+type JobStatus = "queued" | "processing" | "completed" | "failed";
 
-// ---------------------------------------------------------------------------
-// Types mirroring server contracts
-// ---------------------------------------------------------------------------
-
-type RemixJobStatus = "queued" | "processing" | "completed" | "failed";
-type AudioJobStatus = "queued" | "processing" | "completed" | "failed";
-
-interface BaseJob {
+interface RemixJob {
   jobId: string;
   videoId: string;
-  status: RemixJobStatus | AudioJobStatus;
+  type: RemixJobType;
+  status: JobStatus;
   progress: number;
-  outputUrl: string | null;
-  error: string | null;
+  outputVideoUrl?: string;
+  generatedScript?: string;
+  params: Record<string, unknown>;
+  error?: string;
+  createdAt: string;
   updatedAt: string;
 }
 
-interface StyleTransferJob extends BaseJob {
-  type: "style-transfer";
-  style: string;
+interface AudioRemixJob {
+  jobId: string;
+  videoId: string;
+  type: AudioJobType;
+  status: JobStatus;
+  progress: number;
+  outputAudioUrl?: string;
+  lipSyncOffsetMs?: number;
+  params: Record<string, unknown>;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface BackgroundSwapJob extends BaseJob {
-  type: "background-swap";
-  newBackground: string;
+interface PublishedRemix {
+  remixId: string;
+  jobId: string;
+  title: string;
+  originalCreatorHandle: string | null;
+  originalVideoId: string;
 }
 
-interface AlternateEndingJob extends BaseJob {
-  type: "alternate-ending";
-  prompt: string;
-  generatedScript: string | null;
-}
-
-interface VisualEffectsJob extends BaseJob {
-  type: "visual-effects";
-  effects: string[];
-}
-
-interface MusicChangeJob extends BaseJob {
-  type: "music-change";
-  genre: string;
-  speechPreserved: boolean;
-}
-
-interface SfxInjectionJob extends BaseJob {
-  type: "sfx-injection";
-  timestamps: Array<{ timestampSeconds: number; effectId: string; volume: number }>;
-}
-
-interface SpeedChangeJob extends BaseJob {
-  type: "speed-change";
-  factor: number;
-  pitchCompensated: boolean;
-}
-
-interface VoiceCloneJob extends BaseJob {
-  type: "voice-clone";
-  targetVoiceId: string;
-  lipSyncOffsetMs: number | null;
-}
-
-type AnyJob =
-  | StyleTransferJob
-  | BackgroundSwapJob
-  | AlternateEndingJob
-  | VisualEffectsJob
-  | MusicChangeJob
-  | SfxInjectionJob
-  | SpeedChangeJob
-  | VoiceCloneJob;
-
-type ActiveTab = "style" | "effects" | "background" | "ending" | "audio";
+type AnyJob = RemixJob | AudioRemixJob;
 
 // ---------------------------------------------------------------------------
-// Effect catalogue
+// Catalogues (duplicated client-side so the UI can render without a fetch).
+// Kept in sync with the server-side constants.
 // ---------------------------------------------------------------------------
 
-const STYLE_PRESETS = [
-  { id: "anime", label: "Anime", emoji: "🌸" },
-  { id: "oil-painting", label: "Oil Painting", emoji: "🖼️" },
-  { id: "cyberpunk", label: "Cyberpunk", emoji: "🤖" },
-  { id: "noir", label: "Noir", emoji: "🎞️" },
-  { id: "retro-vhs", label: "Retro VHS", emoji: "📼" },
+const STYLES = ["anime", "oil-painting", "cyberpunk", "noir", "retro-vhs"] as const;
+const BACKGROUNDS = ["beach", "space", "forest", "neon-city", "mountain", "studio"] as const;
+const EFFECTS = ["lens-flare", "rain", "snow", "fire", "glitch", "vhs-scan-lines"] as const;
+const GENRES = [
+  "lofi",
+  "cinematic",
+  "electronic",
+  "rock",
+  "jazz",
+  "classical",
+  "hiphop",
+  "ambient",
+  "country",
+  "synthwave",
+] as const;
+const SFX = [
+  "applause",
+  "laugh-track",
+  "drum-roll",
+  "explosion",
+  "whoosh",
+  "record-scratch",
+  "ding",
+  "boom",
+  "glass-break",
+  "heartbeat",
+] as const;
+const VOICES = [
+  "narrator-male",
+  "narrator-female",
+  "anime-girl",
+  "noir-detective",
+  "robot",
+  "child",
+  "elder-wise",
+  "announcer",
 ] as const;
 
-const VISUAL_EFFECTS = [
-  { id: "lens-flare", label: "Lens Flare", emoji: "✨" },
-  { id: "rain", label: "Rain", emoji: "🌧️" },
-  { id: "snow", label: "Snow", emoji: "❄️" },
-  { id: "fire", label: "Fire", emoji: "🔥" },
-  { id: "glitch", label: "Glitch", emoji: "💥" },
-  { id: "vhs-scan-lines", label: "VHS Scan Lines", emoji: "📺" },
-] as const;
-
-const BACKGROUND_PRESETS = [
-  { id: "space", label: "Space", emoji: "🚀" },
-  { id: "beach", label: "Beach", emoji: "🏖️" },
-  { id: "forest", label: "Forest", emoji: "🌲" },
-  { id: "city-night", label: "City Night", emoji: "🌃" },
-  { id: "abstract-gradient", label: "Abstract Gradient", emoji: "🎨" },
-  { id: "studio-white", label: "Studio White", emoji: "⬜" },
-] as const;
-
-const MUSIC_GENRES = [
-  { id: "lo-fi", label: "Lo-Fi", emoji: "🎧" },
-  { id: "epic-orchestral", label: "Epic Orchestral", emoji: "🎻" },
-  { id: "synthwave", label: "Synthwave", emoji: "🕹️" },
-  { id: "acoustic", label: "Acoustic", emoji: "🎸" },
-  { id: "hip-hop", label: "Hip-Hop", emoji: "🎤" },
-  { id: "jazz", label: "Jazz", emoji: "🎷" },
-  { id: "ambient", label: "Ambient", emoji: "🌊" },
-  { id: "rock", label: "Rock", emoji: "🤘" },
-  { id: "electronic", label: "Electronic", emoji: "⚡" },
-  { id: "classical", label: "Classical", emoji: "🎹" },
-] as const;
-
-const TABS: Array<{ id: ActiveTab; label: string; emoji: string }> = [
-  { id: "style", label: "Style Transfer", emoji: "🎨" },
-  { id: "effects", label: "Visual Effects", emoji: "✨" },
-  { id: "background", label: "Background Swap", emoji: "🌅" },
-  { id: "ending", label: "Alternate Ending", emoji: "🎬" },
-  { id: "audio", label: "Audio Remix", emoji: "🎵" },
+type TabId = "style" | "background" | "ending" | "effects" | "audio";
+const TABS: { id: TabId; label: string }[] = [
+  { id: "style", label: "🎨 Style" },
+  { id: "background", label: "🌅 Background" },
+  { id: "ending", label: "📜 Alt Ending" },
+  { id: "effects", label: "✨ Effects" },
+  { id: "audio", label: "🔊 Audio" },
 ];
 
 // ---------------------------------------------------------------------------
-// Timeline SFX entry
+// Props
 // ---------------------------------------------------------------------------
 
-interface TimelineSfxEntry {
-  id: string;
-  timestampSeconds: number;
-  effectId: string;
-  volume: number;
-}
-
-const SOUND_EFFECTS = [
-  { id: "explosion", label: "Explosion", emoji: "💣" },
-  { id: "crowd-cheer", label: "Crowd Cheer", emoji: "👏" },
-  { id: "dramatic-sting", label: "Dramatic Sting", emoji: "🎵" },
-  { id: "notification-ping", label: "Ping", emoji: "🔔" },
-  { id: "thunder", label: "Thunder", emoji: "⛈️" },
-  { id: "wind", label: "Wind", emoji: "💨" },
-  { id: "rain-drops", label: "Rain Drops", emoji: "🌧️" },
-  { id: "laugh-track", label: "Laugh Track", emoji: "😂" },
-  { id: "suspense-riser", label: "Suspense Riser", emoji: "😨" },
-  { id: "whoosh", label: "Whoosh", emoji: "💫" },
-];
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function pickRandom<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function statusColor(status: string): string {
-  switch (status) {
-    case "completed": return "#1db954";
-    case "processing": return "#d4a737";
-    case "failed": return "#ff8f8f";
-    default: return "#888";
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
-
-interface RemixStudioProps {
-  /** The video to remix. Defaults to a demo video ID. */
+export interface RemixStudioProps {
+  /** ID of the video to remix. Defaults to a placeholder. */
   videoId?: string;
-  /** The video creator handle for attribution. */
+  /** Handle of the original creator, attached to published remixes. */
   creatorHandle?: string;
+  /** Source video URL for the left-hand "original" preview. */
+  originalVideoUrl?: string;
+  /** Base URL of the server API. */
+  apiBaseUrl?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+function pickRandom<T>(items: readonly T[]): T {
+  const idx = Math.floor(Math.random() * items.length);
+  return items[idx] as T;
+}
+
+function titleCase(s: string): string {
+  return s.replace(/(^|[-_ ])([a-z])/g, (_, p, c) => p + c.toUpperCase());
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function RemixStudio({
-  videoId = "demo-video-001",
-  creatorHandle = "@quanttube_demo",
+  videoId = "demo-video",
+  creatorHandle = "demo",
+  originalVideoUrl,
+  apiBaseUrl = process.env.NEXT_PUBLIC_QUANTTUBE_API_BASE_URL ?? "http://localhost:4000",
 }: RemixStudioProps) {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("style");
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("style");
+
+  // Current remix form state
+  const [style, setStyle] = useState<(typeof STYLES)[number]>("anime");
+  const [background, setBackground] = useState<string>("beach");
+  const [customBackground, setCustomBackground] = useState<string>("");
+  const [endingPrompt, setEndingPrompt] = useState<string>("");
   const [selectedEffects, setSelectedEffects] = useState<Set<string>>(new Set());
-  const [selectedBackground, setSelectedBackground] = useState<string | null>(null);
-  const [endingPrompt, setEndingPrompt] = useState("");
-  const [selectedMusicGenre, setSelectedMusicGenre] = useState<string | null>(null);
-  const [speedFactor, setSpeedFactor] = useState(1.0);
-  const [targetVoiceId, setTargetVoiceId] = useState("");
-  const [timelineEntries, setTimelineEntries] = useState<TimelineSfxEntry[]>([]);
-  const [newSfxTime, setNewSfxTime] = useState(0);
-  const [newSfxEffect, setNewSfxEffect] = useState("explosion");
-  const [newSfxVolume, setNewSfxVolume] = useState(1.0);
 
-  const [activeJob, setActiveJob] = useState<AnyJob | null>(null);
-  const [jobError, setJobError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Audio tab state
+  type AudioMode = "music" | "sfx" | "speed" | "voice";
+  const [audioMode, setAudioMode] = useState<AudioMode>("music");
+  const [genre, setGenre] = useState<(typeof GENRES)[number]>("cinematic");
+  const [sfxEntries, setSfxEntries] = useState<
+    { timestampSecs: number; effectId: (typeof SFX)[number]; volumeDb: number }[]
+  >([]);
+  const [newSfxTs, setNewSfxTs] = useState<number>(0);
+  const [newSfxId, setNewSfxId] = useState<(typeof SFX)[number]>("ding");
+  const [newSfxVol, setNewSfxVol] = useState<number>(0);
+  const [speedFactor, setSpeedFactor] = useState<number>(1);
+  const [voiceId, setVoiceId] = useState<(typeof VOICES)[number]>("narrator-male");
 
-  const [publishTitle, setPublishTitle] = useState("");
-  const [publishDescription, setPublishDescription] = useState("");
-  const [publishTags, setPublishTags] = useState("");
-  const [publishResult, setPublishResult] = useState<{ remixId: string; title: string } | null>(null);
-  const [publishError, setPublishError] = useState<string | null>(null);
-  const [publishing, setPublishing] = useState(false);
+  // Job tracking
+  const [currentJob, setCurrentJob] = useState<AnyJob | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [publishInfo, setPublishInfo] = useState<PublishedRemix | null>(null);
+  const pollRef = useRef<number | null>(null);
 
-  const mountedRef = useRef(true);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Publish form
+  const [publishTitle, setPublishTitle] = useState<string>("");
+  const [publishDescription, setPublishDescription] = useState<string>("");
+  const [publishTags, setPublishTags] = useState<string>("");
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+  const isVideoJob = (j: AnyJob | null): j is RemixJob =>
+    !!j && ["style-transfer", "background-swap", "alternate-ending", "visual-effects"].includes(j.type);
+  const isAudioJob = (j: AnyJob | null): j is AudioRemixJob =>
+    !!j && ["music-change", "sfx-add", "speed-change", "voice-clone"].includes(j.type);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Progress polling
-  // ---------------------------------------------------------------------------
-
+  // Poll the job until it completes or fails.
   const startPolling = useCallback(
-    (jobId: string, isAudio: boolean) => {
-      if (pollRef.current) clearInterval(pollRef.current);
-
-      const jobPath = isAudio
-        ? `/api/remixes/audio/jobs/${jobId}`
-        : `/api/remixes/jobs/${jobId}`;
-
-      pollRef.current = setInterval(async () => {
+    (jobId: string, kind: "remix" | "audio") => {
+      stopPolling();
+      const path = kind === "remix" ? "jobs" : "audio/jobs";
+      pollRef.current = window.setInterval(async () => {
         try {
-          const resp = await fetch(`${API_BASE}${jobPath}`);
-          if (!resp.ok || !mountedRef.current) return;
-          const job = (await resp.json()) as AnyJob;
-          if (!mountedRef.current) return;
-          setActiveJob(job);
-          if (job.status === "completed" || job.status === "failed") {
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
+          const res = await fetch(`${apiBaseUrl}/api/remixes/${path}/${jobId}`);
+          if (!res.ok) {
+            setError(`Status ${res.status}`);
+            stopPolling();
+            return;
           }
-        } catch {
-          // noop – backend may be unavailable in dev
+          const job: AnyJob = await res.json();
+          setCurrentJob(job);
+          if (job.status === "completed" || job.status === "failed") {
+            stopPolling();
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+          stopPolling();
         }
-      }, 200);
+      }, 400);
     },
-    []
+    [apiBaseUrl, stopPolling],
   );
 
-  // ---------------------------------------------------------------------------
-  // Dispatch remix operations
-  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
 
-  async function post<T>(path: string, body: unknown): Promise<T> {
-    const resp = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = (await resp.json()) as T | { error: string };
-    if (!resp.ok) throw new Error((data as { error: string }).error ?? "Request failed");
-    return data as T;
-  }
+  // ---------------- submit helpers ----------------
 
-  async function applyStyle() {
-    if (!selectedStyle) return;
-    setLoading(true);
-    setJobError(null);
-    setActiveJob(null);
-    setPublishResult(null);
-    try {
-      const job = await post<StyleTransferJob>("/api/remixes/style-transfer", {
-        videoId,
-        style: selectedStyle,
-      });
-      if (!mountedRef.current) return;
-      setActiveJob(job);
-      startPolling(job.jobId, false);
-    } catch (e: unknown) {
-      if (mountedRef.current) setJobError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }
+  const submit = useCallback(
+    async (path: string, body: unknown, kind: "remix" | "audio") => {
+      setError(null);
+      setPublishInfo(null);
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/remixes/${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const job = await res.json();
+        if (!res.ok) {
+          setError(job.error ?? `Status ${res.status}`);
+          return;
+        }
+        setCurrentJob(job);
+        startPolling(job.jobId, kind);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [apiBaseUrl, startPolling],
+  );
 
-  async function applyEffects() {
-    if (selectedEffects.size === 0) return;
-    setLoading(true);
-    setJobError(null);
-    setActiveJob(null);
-    setPublishResult(null);
-    try {
-      const job = await post<VisualEffectsJob>("/api/remixes/visual-effects", {
-        videoId,
-        effects: Array.from(selectedEffects),
-      });
-      if (!mountedRef.current) return;
-      setActiveJob(job);
-      startPolling(job.jobId, false);
-    } catch (e: unknown) {
-      if (mountedRef.current) setJobError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }
-
-  async function applyBackground() {
-    if (!selectedBackground) return;
-    setLoading(true);
-    setJobError(null);
-    setActiveJob(null);
-    setPublishResult(null);
-    try {
-      const job = await post<BackgroundSwapJob>("/api/remixes/background-swap", {
-        videoId,
-        newBackground: selectedBackground,
-      });
-      if (!mountedRef.current) return;
-      setActiveJob(job);
-      startPolling(job.jobId, false);
-    } catch (e: unknown) {
-      if (mountedRef.current) setJobError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }
-
-  async function applyAlternateEnding() {
-    if (!endingPrompt.trim()) return;
-    setLoading(true);
-    setJobError(null);
-    setActiveJob(null);
-    setPublishResult(null);
-    try {
-      const job = await post<AlternateEndingJob>("/api/remixes/alternate-ending", {
-        videoId,
-        prompt: endingPrompt.trim(),
-      });
-      if (!mountedRef.current) return;
-      setActiveJob(job);
-      startPolling(job.jobId, false);
-    } catch (e: unknown) {
-      if (mountedRef.current) setJobError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }
-
-  async function applyMusic() {
-    if (!selectedMusicGenre) return;
-    setLoading(true);
-    setJobError(null);
-    setActiveJob(null);
-    setPublishResult(null);
-    try {
-      const job = await post<MusicChangeJob>("/api/remixes/audio/music", {
-        videoId,
-        genre: selectedMusicGenre,
-      });
-      if (!mountedRef.current) return;
-      setActiveJob(job);
-      startPolling(job.jobId, true);
-    } catch (e: unknown) {
-      if (mountedRef.current) setJobError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }
-
-  async function applySpeed() {
-    setLoading(true);
-    setJobError(null);
-    setActiveJob(null);
-    setPublishResult(null);
-    try {
-      const job = await post<SpeedChangeJob>("/api/remixes/audio/speed", {
-        videoId,
-        factor: speedFactor,
-      });
-      if (!mountedRef.current) return;
-      setActiveJob(job);
-      startPolling(job.jobId, true);
-    } catch (e: unknown) {
-      if (mountedRef.current) setJobError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }
-
-  async function applyVoiceClone() {
-    if (!targetVoiceId.trim()) return;
-    setLoading(true);
-    setJobError(null);
-    setActiveJob(null);
-    setPublishResult(null);
-    try {
-      const job = await post<VoiceCloneJob>("/api/remixes/audio/voice-clone", {
-        videoId,
-        targetVoiceId: targetVoiceId.trim(),
-      });
-      if (!mountedRef.current) return;
-      setActiveJob(job);
-      startPolling(job.jobId, true);
-    } catch (e: unknown) {
-      if (mountedRef.current) setJobError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }
-
-  async function applySfx() {
-    if (timelineEntries.length === 0) return;
-    setLoading(true);
-    setJobError(null);
-    setActiveJob(null);
-    setPublishResult(null);
-    try {
-      const job = await post<SfxInjectionJob>("/api/remixes/audio/sfx", {
-        videoId,
-        timestamps: timelineEntries.map((e) => ({
-          timestampSeconds: e.timestampSeconds,
-          effectId: e.effectId,
-          volume: e.volume,
-        })),
-      });
-      if (!mountedRef.current) return;
-      setActiveJob(job);
-      startPolling(job.jobId, true);
-    } catch (e: unknown) {
-      if (mountedRef.current) setJobError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Randomize
-  // ---------------------------------------------------------------------------
-
-  function randomize() {
-    const tab = pickRandom(TABS);
-    setActiveTab(tab.id);
-    setSelectedStyle(pickRandom(STYLE_PRESETS).id);
-    setSelectedBackground(pickRandom(BACKGROUND_PRESETS).id);
-    setSelectedMusicGenre(pickRandom(MUSIC_GENRES).id);
-    setSpeedFactor(parseFloat((0.75 + Math.random() * 1.25).toFixed(2)));
-    const randomEffects = new Set(
-      VISUAL_EFFECTS.filter(() => Math.random() > 0.5).map((e) => e.id)
+  const runStyle = () => submit("style", { videoId, style }, "remix");
+  const runBackground = () =>
+    submit(
+      "background",
+      { videoId, newBackground: customBackground.trim() || background },
+      "remix",
     );
-    setSelectedEffects(randomEffects.size > 0 ? randomEffects : new Set([VISUAL_EFFECTS[0].id]));
-    setEndingPrompt("The hero discovers a hidden portal and leaps into another dimension.");
-  }
+  const runEnding = () => submit("ending", { videoId, prompt: endingPrompt }, "remix");
+  const runEffects = () => {
+    const effects = Array.from(selectedEffects);
+    if (effects.length === 0) {
+      setError("Please select at least one effect.");
+      return;
+    }
+    submit("effects", { videoId, effects }, "remix");
+  };
+  const runAudio = () => {
+    if (audioMode === "music") return submit("audio/music", { videoId, genre }, "audio");
+    if (audioMode === "sfx") {
+      if (sfxEntries.length === 0) {
+        setError("Add at least one SFX entry.");
+        return;
+      }
+      return submit("audio/sfx", { videoId, entries: sfxEntries }, "audio");
+    }
+    if (audioMode === "speed")
+      return submit("audio/speed", { videoId, factor: speedFactor }, "audio");
+    return submit("audio/voice", { videoId, targetVoiceId: voiceId }, "audio");
+  };
 
-  // ---------------------------------------------------------------------------
-  // Publish
-  // ---------------------------------------------------------------------------
+  // ---------------- randomize ----------------
 
-  async function publish() {
-    if (!activeJob || activeJob.status !== "completed" || !publishTitle.trim()) return;
-    setPublishing(true);
-    setPublishError(null);
+  const randomize = useCallback(() => {
+    const r = Math.random();
+    if (r < 0.2) {
+      setActiveTab("style");
+      const s = pickRandom(STYLES);
+      setStyle(s);
+      submit("style", { videoId, style: s }, "remix");
+    } else if (r < 0.4) {
+      setActiveTab("background");
+      const b = pickRandom(BACKGROUNDS);
+      setBackground(b);
+      setCustomBackground("");
+      submit("background", { videoId, newBackground: b }, "remix");
+    } else if (r < 0.6) {
+      setActiveTab("ending");
+      const prompt = pickRandom([
+        "the hero realises it was a dream",
+        "the villain becomes the narrator",
+        "time rewinds to the very first scene",
+        "every character meets their future self",
+      ]);
+      setEndingPrompt(prompt);
+      submit("ending", { videoId, prompt }, "remix");
+    } else if (r < 0.8) {
+      setActiveTab("effects");
+      const chosen = new Set<string>();
+      const n = 1 + Math.floor(Math.random() * 3);
+      while (chosen.size < n) chosen.add(pickRandom(EFFECTS));
+      setSelectedEffects(chosen);
+      submit("effects", { videoId, effects: Array.from(chosen) }, "remix");
+    } else {
+      setActiveTab("audio");
+      setAudioMode("music");
+      const g = pickRandom(GENRES);
+      setGenre(g);
+      submit("audio/music", { videoId, genre: g }, "audio");
+    }
+  }, [submit, videoId]);
+
+  // ---------------- publish ----------------
+
+  const canPublish = useMemo(
+    () =>
+      currentJob !== null &&
+      currentJob.status === "completed" &&
+      isVideoJob(currentJob) &&
+      publishTitle.trim().length > 0,
+    [currentJob, publishTitle],
+  );
+
+  const publish = async () => {
+    if (!currentJob || !isVideoJob(currentJob)) return;
+    setError(null);
     try {
       const tags = publishTags
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
-      const result = await post<{ remixId: string; title: string }>(
-        `/api/remixes/${activeJob.jobId}/publish`,
+      const res = await fetch(
+        `${apiBaseUrl}/api/remixes/jobs/${currentJob.jobId}/publish`,
         {
-          title: publishTitle.trim(),
-          description: publishDescription.trim(),
-          tags,
-          originalVideoId: videoId,
-          originalCreatorHandle: creatorHandle,
-        }
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: publishTitle,
+            description: publishDescription,
+            tags,
+            originalCreatorHandle: creatorHandle,
+          }),
+        },
       );
-      if (!mountedRef.current) return;
-      setPublishResult(result);
-    } catch (e: unknown) {
-      if (mountedRef.current) setPublishError((e as Error).message);
-    } finally {
-      if (mountedRef.current) setPublishing(false);
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body.error ?? `Status ${res.status}`);
+        return;
+      }
+      setPublishInfo(body);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
-  }
+  };
 
-  // ---------------------------------------------------------------------------
-  // Timeline management
-  // ---------------------------------------------------------------------------
+  // ---------------- render ----------------
 
-  function addTimelineEntry() {
-    setTimelineEntries((prev) => [
-      ...prev,
-      {
-        id: `sfx-${Date.now()}`,
-        timestampSeconds: newSfxTime,
-        effectId: newSfxEffect,
-        volume: newSfxVolume,
-      },
-    ]);
-  }
-
-  function removeTimelineEntry(id: string) {
-    setTimelineEntries((prev) => prev.filter((e) => e.id !== id));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Computed
-  // ---------------------------------------------------------------------------
-
-  const canApply = useMemo(() => {
-    if (loading) return false;
-    switch (activeTab) {
-      case "style": return selectedStyle !== null;
-      case "effects": return selectedEffects.size > 0;
-      case "background": return selectedBackground !== null;
-      case "ending": return endingPrompt.trim().length > 0 && endingPrompt.length <= 500;
-      case "audio": return true;
-      default: return false;
-    }
-  }, [activeTab, selectedStyle, selectedEffects, selectedBackground, endingPrompt, loading]);
-
-  function handleApply() {
-    switch (activeTab) {
-      case "style": void applyStyle(); break;
-      case "effects": void applyEffects(); break;
-      case "background": void applyBackground(); break;
-      case "ending": void applyAlternateEnding(); break;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  const progress = currentJob?.progress ?? 0;
+  const remixUrl =
+    currentJob && isVideoJob(currentJob) ? currentJob.outputVideoUrl : undefined;
+  const generatedScript =
+    currentJob && isVideoJob(currentJob) ? currentJob.generatedScript : undefined;
+  const lipSyncOffsetMs =
+    currentJob && isAudioJob(currentJob) ? currentJob.lipSyncOffsetMs : undefined;
+  const audioOutputUrl =
+    currentJob && isAudioJob(currentJob) ? currentJob.outputAudioUrl : undefined;
 
   return (
-    <div className={styles.studio}>
-      {/* Header */}
-      <header className={styles.header}>
-        <h1 className={styles.title}>
-          <span className={styles.titleEmoji}>🎬</span> Remix Studio
-        </h1>
-        <p className={styles.subtitle}>AI-powered one-click content transformation</p>
+    <div
+      data-testid="remix-studio"
+      style={{
+        maxWidth: 1200,
+        margin: "0 auto",
+        padding: 20,
+        color: "#e8e8ef",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+      }}
+    >
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h1 style={{ margin: 0, fontSize: 24 }}>🎬 Remix Studio</h1>
         <button
-          className={styles.randomizeBtn}
           onClick={randomize}
-          aria-label="Randomize remix settings"
+          style={{
+            background: "linear-gradient(90deg,#f72585,#7209b7)",
+            color: "#fff",
+            border: "none",
+            padding: "10px 18px",
+            borderRadius: 10,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
         >
           🎲 Randomize
         </button>
       </header>
 
-      {/* Main layout */}
-      <div className={styles.mainLayout}>
-        {/* Left: Controls */}
-        <section className={styles.controls} aria-label="Remix controls">
-          {/* Tab navigation */}
-          <nav className={styles.tabNav} role="tablist" aria-label="Remix type">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                className={`${styles.tabBtn} ${activeTab === tab.id ? styles.tabBtnActive : ""}`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <span aria-hidden="true">{tab.emoji}</span>
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          {/* Tab panels */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              className={styles.tabPanel}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-            >
-              {activeTab === "style" && (
-                <StyleTab
-                  selected={selectedStyle}
-                  onSelect={setSelectedStyle}
-                />
-              )}
-              {activeTab === "effects" && (
-                <EffectsTab
-                  selected={selectedEffects}
-                  onToggle={(id) =>
-                    setSelectedEffects((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(id)) next.delete(id);
-                      else next.add(id);
-                      return next;
-                    })
-                  }
-                />
-              )}
-              {activeTab === "background" && (
-                <BackgroundTab
-                  selected={selectedBackground}
-                  onSelect={setSelectedBackground}
-                />
-              )}
-              {activeTab === "ending" && (
-                <EndingTab
-                  prompt={endingPrompt}
-                  onPromptChange={setEndingPrompt}
-                />
-              )}
-              {activeTab === "audio" && (
-                <AudioTab
-                  selectedMusicGenre={selectedMusicGenre}
-                  onSelectMusicGenre={setSelectedMusicGenre}
-                  speedFactor={speedFactor}
-                  onSpeedFactorChange={setSpeedFactor}
-                  targetVoiceId={targetVoiceId}
-                  onTargetVoiceIdChange={setTargetVoiceId}
-                  timelineEntries={timelineEntries}
-                  newSfxTime={newSfxTime}
-                  onNewSfxTimeChange={setNewSfxTime}
-                  newSfxEffect={newSfxEffect}
-                  onNewSfxEffectChange={setNewSfxEffect}
-                  newSfxVolume={newSfxVolume}
-                  onNewSfxVolumeChange={setNewSfxVolume}
-                  onAddEntry={addTimelineEntry}
-                  onRemoveEntry={removeTimelineEntry}
-                  onApplyMusic={() => void applyMusic()}
-                  onApplySpeed={() => void applySpeed()}
-                  onApplyVoiceClone={() => void applyVoiceClone()}
-                  onApplySfx={() => void applySfx()}
-                  loading={loading}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
-
-          {/* Apply button (non-audio tabs) */}
-          {activeTab !== "audio" && (
-            <button
-              className={styles.applyBtn}
-              onClick={handleApply}
-              disabled={!canApply}
-              aria-busy={loading}
-            >
-              {loading ? (
-                <span>⏳ Processing…</span>
-              ) : (
-                <span>▶ Apply Remix</span>
-              )}
-            </button>
-          )}
-
-          {jobError && (
-            <p className={styles.errorMsg} role="alert">
-              ⚠️ {jobError}
-            </p>
-          )}
-        </section>
-
-        {/* Right: Side-by-side preview + progress */}
-        <section className={styles.previewSection} aria-label="Remix preview">
-          <div className={styles.previewRow}>
-            {/* Original */}
-            <div className={styles.previewPane}>
-              <span className={styles.previewLabel}>Original</span>
-              <div className={styles.videoPlaceholder}>
-                <span className={styles.videoIcon}>▶</span>
-                <span className={styles.videoIdLabel}>{videoId}</span>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div className={styles.previewDivider} aria-hidden="true">⟺</div>
-
-            {/* Remix output */}
-            <div className={styles.previewPane}>
-              <span className={styles.previewLabel}>Remix</span>
-              <AnimatePresence mode="wait">
-                {activeJob && activeJob.status === "completed" && activeJob.outputUrl ? (
-                  <motion.div
-                    key="output"
-                    className={`${styles.videoPlaceholder} ${styles.videoPlaceholderRemix}`}
-                    initial={{ opacity: 0, scale: 0.97 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <span className={styles.videoIcon}>✅</span>
-                    <span className={styles.videoIdLabel}>Remix ready</span>
-                    <a
-                      className={styles.outputLink}
-                      href={activeJob.outputUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      View output ↗
-                    </a>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="placeholder"
-                    className={styles.videoPlaceholder}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    <span className={styles.videoIcon}>⏳</span>
-                    <span className={styles.videoIdLabel}>Awaiting remix</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-
-          {/* Progress panel */}
-          {activeJob && (
-            <JobProgress job={activeJob} />
-          )}
-
-          {/* Publish panel */}
-          {activeJob?.status === "completed" && !publishResult && (
-            <PublishPanel
-              title={publishTitle}
-              onTitleChange={setPublishTitle}
-              description={publishDescription}
-              onDescriptionChange={setPublishDescription}
-              tags={publishTags}
-              onTagsChange={setPublishTags}
-              onPublish={() => void publish()}
-              publishing={publishing}
-              error={publishError}
-            />
-          )}
-
-          {/* Publish success */}
-          {publishResult && (
-            <motion.div
-              className={styles.publishSuccess}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <span>🎉</span>
-              <p>
-                <strong>{publishResult.title}</strong> published to the Quanttube feed!
-              </p>
-              <p className={styles.remixId}>ID: {publishResult.remixId}</p>
-              <p className={styles.attribution}>
-                Attribution: Remixed from {creatorHandle}
-              </p>
-            </motion.div>
-          )}
-        </section>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-function StyleTab({
-  selected,
-  onSelect,
-}: {
-  selected: string | null;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div>
-      <p className={styles.panelHint}>Choose a visual style to transform the entire video:</p>
-      <div className={styles.effectGrid}>
-        {STYLE_PRESETS.map((preset) => (
-          <EffectCard
-            key={preset.id}
-            id={preset.id}
-            label={preset.label}
-            emoji={preset.emoji}
-            selected={selected === preset.id}
-            onSelect={onSelect}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EffectsTab({
-  selected,
-  onToggle,
-}: {
-  selected: Set<string>;
-  onToggle: (id: string) => void;
-}) {
-  return (
-    <div>
-      <p className={styles.panelHint}>Select one or more visual effects to overlay:</p>
-      <div className={styles.effectGrid}>
-        {VISUAL_EFFECTS.map((effect) => (
-          <EffectCard
-            key={effect.id}
-            id={effect.id}
-            label={effect.label}
-            emoji={effect.emoji}
-            selected={selected.has(effect.id)}
-            onSelect={onToggle}
-            multi
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BackgroundTab({
-  selected,
-  onSelect,
-}: {
-  selected: string | null;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <div>
-      <p className={styles.panelHint}>Choose a background to replace via AI segmentation:</p>
-      <div className={styles.effectGrid}>
-        {BACKGROUND_PRESETS.map((bg) => (
-          <EffectCard
-            key={bg.id}
-            id={bg.id}
-            label={bg.label}
-            emoji={bg.emoji}
-            selected={selected === bg.id}
-            onSelect={onSelect}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EndingTab({
-  prompt,
-  onPromptChange,
-}: {
-  prompt: string;
-  onPromptChange: (val: string) => void;
-}) {
-  const remaining = 500 - prompt.length;
-  return (
-    <div className={styles.endingPanel}>
-      <p className={styles.panelHint}>
-        Describe an alternate ending for the AI to generate (up to 500 characters):
-      </p>
-      <textarea
-        className={styles.promptTextarea}
-        value={prompt}
-        onChange={(e) => onPromptChange(e.target.value)}
-        maxLength={500}
-        placeholder="The hero discovers a hidden doorway and escapes into the future…"
-        rows={4}
-        aria-label="Alternate ending prompt"
-      />
-      <p
-        className={`${styles.charCount} ${remaining < 50 ? styles.charCountWarn : ""}`}
-      >
-        {remaining} characters remaining
-      </p>
-    </div>
-  );
-}
-
-interface AudioTabProps {
-  selectedMusicGenre: string | null;
-  onSelectMusicGenre: (id: string) => void;
-  speedFactor: number;
-  onSpeedFactorChange: (v: number) => void;
-  targetVoiceId: string;
-  onTargetVoiceIdChange: (v: string) => void;
-  timelineEntries: TimelineSfxEntry[];
-  newSfxTime: number;
-  onNewSfxTimeChange: (v: number) => void;
-  newSfxEffect: string;
-  onNewSfxEffectChange: (v: string) => void;
-  newSfxVolume: number;
-  onNewSfxVolumeChange: (v: number) => void;
-  onAddEntry: () => void;
-  onRemoveEntry: (id: string) => void;
-  onApplyMusic: () => void;
-  onApplySpeed: () => void;
-  onApplyVoiceClone: () => void;
-  onApplySfx: () => void;
-  loading: boolean;
-}
-
-function AudioTab({
-  selectedMusicGenre,
-  onSelectMusicGenre,
-  speedFactor,
-  onSpeedFactorChange,
-  targetVoiceId,
-  onTargetVoiceIdChange,
-  timelineEntries,
-  newSfxTime,
-  onNewSfxTimeChange,
-  newSfxEffect,
-  onNewSfxEffectChange,
-  newSfxVolume,
-  onNewSfxVolumeChange,
-  onAddEntry,
-  onRemoveEntry,
-  onApplyMusic,
-  onApplySpeed,
-  onApplyVoiceClone,
-  onApplySfx,
-  loading,
-}: AudioTabProps) {
-  return (
-    <div className={styles.audioPanel}>
-      {/* Music genre */}
-      <div className={styles.audioSection}>
-        <h3 className={styles.audioSectionTitle}>🎵 Replace Background Music</h3>
-        <div className={styles.effectGridSmall}>
-          {MUSIC_GENRES.map((genre) => (
-            <EffectCard
-              key={genre.id}
-              id={genre.id}
-              label={genre.label}
-              emoji={genre.emoji}
-              selected={selectedMusicGenre === genre.id}
-              onSelect={onSelectMusicGenre}
-            />
-          ))}
-        </div>
-        <button
-          className={styles.audioApplyBtn}
-          onClick={onApplyMusic}
-          disabled={!selectedMusicGenre || loading}
+      {/* Side-by-side preview */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+        <motion.div
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4 }}
+          style={previewBoxStyle}
         >
-          Apply Music
-        </button>
-      </div>
-
-      {/* Speed change */}
-      <div className={styles.audioSection}>
-        <h3 className={styles.audioSectionTitle}>⏩ Speed Change (pitch-preserved)</h3>
-        <div className={styles.sliderRow}>
-          <input
-            type="range"
-            min={0.25}
-            max={4}
-            step={0.05}
-            value={speedFactor}
-            onChange={(e) => onSpeedFactorChange(parseFloat(e.target.value))}
-            className={styles.speedSlider}
-            aria-label="Speed factor"
-          />
-          <span className={styles.sliderValue}>{speedFactor.toFixed(2)}×</span>
-        </div>
-        <button
-          className={styles.audioApplyBtn}
-          onClick={onApplySpeed}
-          disabled={loading}
-        >
-          Apply Speed
-        </button>
-      </div>
-
-      {/* Voice clone */}
-      <div className={styles.audioSection}>
-        <h3 className={styles.audioSectionTitle}>🎤 Voice Clone (lip-sync preserved)</h3>
-        <input
-          type="text"
-          className={styles.voiceInput}
-          placeholder="Enter voice ID (e.g. voice-morgan-freeman)"
-          value={targetVoiceId}
-          onChange={(e) => onTargetVoiceIdChange(e.target.value)}
-          aria-label="Target voice ID"
-        />
-        <button
-          className={styles.audioApplyBtn}
-          onClick={onApplyVoiceClone}
-          disabled={!targetVoiceId.trim() || loading}
-        >
-          Apply Voice Clone
-        </button>
-      </div>
-
-      {/* SFX timeline */}
-      <div className={styles.audioSection}>
-        <h3 className={styles.audioSectionTitle}>🔊 SFX Timeline</h3>
-        <div className={styles.timelineAddRow}>
-          <label className={styles.timelineLabel}>
-            Time (s):
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              value={newSfxTime}
-              onChange={(e) => onNewSfxTimeChange(parseFloat(e.target.value) || 0)}
-              className={styles.timelineInput}
-              aria-label="SFX timestamp in seconds"
-            />
-          </label>
-          <label className={styles.timelineLabel}>
-            Effect:
-            <select
-              value={newSfxEffect}
-              onChange={(e) => onNewSfxEffectChange(e.target.value)}
-              className={styles.timelineSelect}
-              aria-label="SFX effect"
-            >
-              {SOUND_EFFECTS.map((sfx) => (
-                <option key={sfx.id} value={sfx.id}>
-                  {sfx.emoji} {sfx.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.timelineLabel}>
-            Vol:
-            <input
-              type="number"
-              min={0}
-              max={2}
-              step={0.1}
-              value={newSfxVolume}
-              onChange={(e) => onNewSfxVolumeChange(parseFloat(e.target.value) || 1)}
-              className={styles.timelineInputSmall}
-              aria-label="SFX volume"
-            />
-          </label>
-          <button className={styles.addSfxBtn} onClick={onAddEntry} aria-label="Add SFX to timeline">
-            +
-          </button>
-        </div>
-
-        {/* Timeline visual */}
-        <div className={styles.timeline} role="list" aria-label="SFX timeline">
-          {timelineEntries.length === 0 ? (
-            <p className={styles.timelineEmpty}>No SFX added yet. Use the form above.</p>
+          <div style={previewLabelStyle}>Original</div>
+          {originalVideoUrl ? (
+            <video src={originalVideoUrl} controls style={previewMediaStyle} />
           ) : (
-            timelineEntries
-              .sort((a, b) => a.timestampSeconds - b.timestampSeconds)
-              .map((entry) => {
-                const sfx = SOUND_EFFECTS.find((s) => s.id === entry.effectId);
-                return (
-                  <div key={entry.id} className={styles.timelineEntry} role="listitem">
-                    <span className={styles.timelineTime}>{entry.timestampSeconds.toFixed(1)}s</span>
-                    <span className={styles.timelineEffect}>
-                      {sfx?.emoji ?? "🔊"} {sfx?.label ?? entry.effectId}
-                    </span>
-                    <span className={styles.timelineVol}>×{entry.volume.toFixed(1)}</span>
-                    <button
-                      className={styles.removeBtn}
-                      onClick={() => onRemoveEntry(entry.id)}
-                      aria-label={`Remove ${sfx?.label ?? entry.effectId} at ${entry.timestampSeconds}s`}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })
+            <div style={placeholderStyle}>🎥 Original video ({videoId})</div>
           )}
-        </div>
+        </motion.div>
 
-        <button
-          className={styles.audioApplyBtn}
-          onClick={onApplySfx}
-          disabled={timelineEntries.length === 0 || loading}
-        >
-          Apply SFX ({timelineEntries.length})
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// EffectCard
-// ---------------------------------------------------------------------------
-
-interface EffectCardProps {
-  id: string;
-  label: string;
-  emoji: string;
-  selected: boolean;
-  onSelect: (id: string) => void;
-  multi?: boolean;
-}
-
-function EffectCard({ id, label, emoji, selected, onSelect, multi }: EffectCardProps) {
-  return (
-    <button
-      className={`${styles.effectCard} ${selected ? styles.effectCardSelected : ""}`}
-      onClick={() => onSelect(id)}
-      aria-pressed={selected}
-      title={multi ? (selected ? `Remove ${label}` : `Add ${label}`) : `Select ${label}`}
-    >
-      <span className={styles.effectEmoji} aria-hidden="true">{emoji}</span>
-      <span className={styles.effectLabel}>{label}</span>
-      {selected && <span className={styles.checkMark} aria-hidden="true">✓</span>}
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// JobProgress
-// ---------------------------------------------------------------------------
-
-function JobProgress({ job }: { job: AnyJob }) {
-  const color = statusColor(job.status);
-  return (
-    <motion.div
-      className={styles.progressPanel}
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      transition={{ duration: 0.25 }}
-      aria-label="Job progress"
-    >
-      <div className={styles.progressHeader}>
-        <span className={styles.jobType}>{job.type}</span>
-        <span className={styles.jobStatus} style={{ color }}>{job.status}</span>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentJob?.jobId ?? "empty"}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{ duration: 0.35 }}
+            style={previewBoxStyle}
+          >
+            <div style={previewLabelStyle}>Remix</div>
+            {remixUrl ? (
+              <video src={remixUrl} controls style={previewMediaStyle} />
+            ) : audioOutputUrl ? (
+              <audio src={audioOutputUrl} controls style={{ width: "100%" }} />
+            ) : (
+              <div style={placeholderStyle}>✨ Pick an effect and press Apply</div>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Progress bar */}
-      <div className={styles.progressBarTrack} role="progressbar" aria-valuenow={job.progress} aria-valuemin={0} aria-valuemax={100}>
-        <motion.div
-          className={styles.progressBarFill}
-          style={{ background: color }}
-          initial={{ width: "0%" }}
-          animate={{ width: `${job.progress}%` }}
-          transition={{ duration: 0.3 }}
-        />
-      </div>
-      <div className={styles.progressMeta}>
-        <span>{job.progress}%</span>
-        <span className={styles.jobId}>ID: {job.jobId.slice(0, 8)}…</span>
-      </div>
-
-      {/* Job-specific details */}
-      {job.type === "alternate-ending" && job.generatedScript && (
-        <div className={styles.scriptPreview}>
-          <strong>Generated script:</strong>
-          <p>{job.generatedScript}</p>
+      {currentJob && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <strong>{titleCase(currentJob.type)}</strong>
+            <span>
+              {currentJob.status} · {progress}%
+            </span>
+          </div>
+          <div style={{ height: 8, background: "#222", borderRadius: 4, overflow: "hidden" }}>
+            <motion.div
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.25 }}
+              style={{
+                height: "100%",
+                background: "linear-gradient(90deg,#4cc9f0,#4361ee)",
+              }}
+            />
+          </div>
+          {generatedScript && (
+            <pre
+              style={{
+                marginTop: 10,
+                padding: 12,
+                background: "#141420",
+                borderRadius: 8,
+                whiteSpace: "pre-wrap",
+                fontSize: 13,
+              }}
+            >
+              {generatedScript}
+            </pre>
+          )}
+          {lipSyncOffsetMs !== undefined && (
+            <div style={{ marginTop: 8, fontSize: 13 }}>
+              🎤 Lip-sync offset: <strong>{lipSyncOffsetMs} ms</strong>
+              {lipSyncOffsetMs < 100 && " ✅"}
+            </div>
+          )}
         </div>
       )}
-      {job.type === "voice-clone" && job.lipSyncOffsetMs !== null && (
-        <p className={styles.lipSync}>
-          Lip-sync offset: <strong>{job.lipSyncOffsetMs}ms</strong>
-          {job.lipSyncOffsetMs < 100 ? " ✅" : " ⚠️"}
-        </p>
+
+      {/* Tabs */}
+      <div role="tablist" style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              flex: 1,
+              padding: "10px 8px",
+              border: "none",
+              borderRadius: 8,
+              background: activeTab === tab.id ? "#4361ee" : "#1c1c2a",
+              color: "#fff",
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab panels */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2 }}
+          style={panelStyle}
+        >
+          {activeTab === "style" && (
+            <div>
+              <h3 style={sectionTitleStyle}>Style Transfer</h3>
+              <div style={chipRowStyle}>
+                {STYLES.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStyle(s)}
+                    style={chipStyle(style === s)}
+                  >
+                    {titleCase(s)}
+                  </button>
+                ))}
+              </div>
+              <button onClick={runStyle} style={primaryButtonStyle}>
+                Apply Style
+              </button>
+            </div>
+          )}
+
+          {activeTab === "background" && (
+            <div>
+              <h3 style={sectionTitleStyle}>Background Swap</h3>
+              <div style={chipRowStyle}>
+                {BACKGROUNDS.map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => {
+                      setBackground(b);
+                      setCustomBackground("");
+                    }}
+                    style={chipStyle(background === b && !customBackground)}
+                  >
+                    {titleCase(b)}
+                  </button>
+                ))}
+              </div>
+              <label style={{ display: "block", marginTop: 10, fontSize: 13 }}>
+                Or paste a custom URL:
+                <input
+                  type="url"
+                  value={customBackground}
+                  onChange={(e) => setCustomBackground(e.target.value)}
+                  placeholder="https://…"
+                  style={inputStyle}
+                />
+              </label>
+              <button onClick={runBackground} style={primaryButtonStyle}>
+                Swap Background
+              </button>
+            </div>
+          )}
+
+          {activeTab === "ending" && (
+            <div>
+              <h3 style={sectionTitleStyle}>Alternate Ending</h3>
+              <textarea
+                value={endingPrompt}
+                onChange={(e) => setEndingPrompt(e.target.value.slice(0, 500))}
+                placeholder="Describe how the story should end (≤500 chars)"
+                rows={4}
+                style={{ ...inputStyle, resize: "vertical" }}
+              />
+              <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 8 }}>
+                {endingPrompt.length}/500
+              </div>
+              <button onClick={runEnding} style={primaryButtonStyle}>
+                Generate Ending
+              </button>
+            </div>
+          )}
+
+          {activeTab === "effects" && (
+            <div>
+              <h3 style={sectionTitleStyle}>Visual Effects</h3>
+              <div style={chipRowStyle}>
+                {EFFECTS.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => {
+                      setSelectedEffects((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(e)) next.delete(e);
+                        else next.add(e);
+                        return next;
+                      });
+                    }}
+                    style={chipStyle(selectedEffects.has(e))}
+                  >
+                    {titleCase(e)}
+                  </button>
+                ))}
+              </div>
+              <button onClick={runEffects} style={primaryButtonStyle}>
+                Apply Effects
+              </button>
+            </div>
+          )}
+
+          {activeTab === "audio" && (
+            <div>
+              <h3 style={sectionTitleStyle}>Audio Remix</h3>
+              <div style={chipRowStyle}>
+                {(["music", "sfx", "speed", "voice"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setAudioMode(m)}
+                    style={chipStyle(audioMode === m)}
+                  >
+                    {titleCase(m)}
+                  </button>
+                ))}
+              </div>
+
+              {audioMode === "music" && (
+                <div>
+                  <label style={{ fontSize: 13 }}>
+                    Genre
+                    <select
+                      value={genre}
+                      onChange={(e) => setGenre(e.target.value as (typeof GENRES)[number])}
+                      style={inputStyle}
+                    >
+                      {GENRES.map((g) => (
+                        <option key={g} value={g}>
+                          {titleCase(g)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              {audioMode === "sfx" && (
+                <div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={newSfxTs}
+                      onChange={(e) => setNewSfxTs(parseFloat(e.target.value) || 0)}
+                      placeholder="Timestamp (s)"
+                      style={{ ...inputStyle, width: 120 }}
+                    />
+                    <select
+                      value={newSfxId}
+                      onChange={(e) => setNewSfxId(e.target.value as (typeof SFX)[number])}
+                      style={{ ...inputStyle, width: 160 }}
+                    >
+                      {SFX.map((s) => (
+                        <option key={s} value={s}>
+                          {titleCase(s)}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={-24}
+                      max={12}
+                      step={1}
+                      value={newSfxVol}
+                      onChange={(e) => setNewSfxVol(parseFloat(e.target.value) || 0)}
+                      placeholder="Vol dB"
+                      style={{ ...inputStyle, width: 100 }}
+                    />
+                    <button
+                      onClick={() =>
+                        setSfxEntries((prev) => [
+                          ...prev,
+                          { timestampSecs: newSfxTs, effectId: newSfxId, volumeDb: newSfxVol },
+                        ])
+                      }
+                      style={secondaryButtonStyle}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <ul style={{ marginTop: 10, padding: 0, listStyle: "none" }}>
+                    {sfxEntries.map((entry, i) => (
+                      <li
+                        key={i}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          padding: "6px 10px",
+                          background: "#1c1c2a",
+                          borderRadius: 6,
+                          marginBottom: 4,
+                        }}
+                      >
+                        <span>
+                          @{entry.timestampSecs.toFixed(1)}s · {titleCase(entry.effectId)} ·{" "}
+                          {entry.volumeDb >= 0 ? "+" : ""}
+                          {entry.volumeDb} dB
+                        </span>
+                        <button
+                          onClick={() =>
+                            setSfxEntries((prev) => prev.filter((_, j) => j !== i))
+                          }
+                          style={{
+                            background: "transparent",
+                            color: "#f72585",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {audioMode === "speed" && (
+                <label style={{ fontSize: 13 }}>
+                  Speed factor ({speedFactor.toFixed(2)}×)
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={4}
+                    step={0.05}
+                    value={speedFactor}
+                    onChange={(e) => setSpeedFactor(parseFloat(e.target.value))}
+                    style={{ width: "100%", marginTop: 6 }}
+                  />
+                </label>
+              )}
+
+              {audioMode === "voice" && (
+                <label style={{ fontSize: 13 }}>
+                  Target voice
+                  <select
+                    value={voiceId}
+                    onChange={(e) => setVoiceId(e.target.value as (typeof VOICES)[number])}
+                    style={inputStyle}
+                  >
+                    {VOICES.map((v) => (
+                      <option key={v} value={v}>
+                        {titleCase(v)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <button onClick={runAudio} style={primaryButtonStyle}>
+                Apply Audio Remix
+              </button>
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {error && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 12,
+            padding: 10,
+            background: "#401520",
+            borderRadius: 6,
+            color: "#ffd1d8",
+          }}
+        >
+          ⚠️ {error}
+        </div>
       )}
-      {job.type === "speed-change" && (
-        <p className={styles.lipSync}>
-          Speed: <strong>{job.factor}×</strong> – pitch compensated: {job.pitchCompensated ? "✅" : "❌"}
-        </p>
+
+      {/* Publish form – only for completed video remixes */}
+      {currentJob && currentJob.status === "completed" && isVideoJob(currentJob) && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            marginTop: 24,
+            padding: 16,
+            background: "#141420",
+            borderRadius: 12,
+          }}
+        >
+          <h3 style={sectionTitleStyle}>🚀 Publish to Quanttube</h3>
+          <input
+            value={publishTitle}
+            onChange={(e) => setPublishTitle(e.target.value)}
+            placeholder="Title (required)"
+            style={inputStyle}
+          />
+          <textarea
+            value={publishDescription}
+            onChange={(e) => setPublishDescription(e.target.value)}
+            placeholder="Description"
+            rows={3}
+            style={{ ...inputStyle, resize: "vertical" }}
+          />
+          <input
+            value={publishTags}
+            onChange={(e) => setPublishTags(e.target.value)}
+            placeholder="Tags (comma-separated)"
+            style={inputStyle}
+          />
+          <button
+            disabled={!canPublish}
+            onClick={publish}
+            style={{
+              ...primaryButtonStyle,
+              opacity: canPublish ? 1 : 0.5,
+              cursor: canPublish ? "pointer" : "not-allowed",
+            }}
+          >
+            Publish Remix
+          </button>
+          {publishInfo && (
+            <div style={{ marginTop: 10, color: "#7ee787" }}>
+              ✅ Published as <strong>{publishInfo.remixId}</strong> — Remixed from @
+              {publishInfo.originalCreatorHandle ?? creatorHandle}
+            </div>
+          )}
+        </motion.div>
       )}
-      {job.type === "music-change" && (
-        <p className={styles.lipSync}>
-          Genre: <strong>{job.genre}</strong> – speech preserved: {job.speechPreserved ? "✅" : "❌"}
-        </p>
-      )}
-    </motion.div>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// PublishPanel
+// Inline styles (kept local – this component is self-contained).
 // ---------------------------------------------------------------------------
 
-interface PublishPanelProps {
-  title: string;
-  onTitleChange: (v: string) => void;
-  description: string;
-  onDescriptionChange: (v: string) => void;
-  tags: string;
-  onTagsChange: (v: string) => void;
-  onPublish: () => void;
-  publishing: boolean;
-  error: string | null;
+const previewBoxStyle: React.CSSProperties = {
+  background: "#0f0f17",
+  borderRadius: 12,
+  padding: 12,
+  minHeight: 220,
+  position: "relative",
+  overflow: "hidden",
+};
+const previewLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: 1.2,
+  textTransform: "uppercase",
+  opacity: 0.7,
+  marginBottom: 8,
+};
+const previewMediaStyle: React.CSSProperties = {
+  width: "100%",
+  borderRadius: 8,
+};
+const placeholderStyle: React.CSSProperties = {
+  height: 180,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#181826",
+  borderRadius: 8,
+  color: "#7a7a90",
+};
+const panelStyle: React.CSSProperties = {
+  background: "#141420",
+  borderRadius: 12,
+  padding: 16,
+};
+const sectionTitleStyle: React.CSSProperties = {
+  marginTop: 0,
+  marginBottom: 12,
+  fontSize: 16,
+};
+const chipRowStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+  marginBottom: 12,
+};
+function chipStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "1px solid " + (active ? "#4cc9f0" : "#333"),
+    background: active ? "#4cc9f022" : "#1c1c2a",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 13,
+  };
 }
-
-function PublishPanel({
-  title,
-  onTitleChange,
-  description,
-  onDescriptionChange,
-  tags,
-  onTagsChange,
-  onPublish,
-  publishing,
-  error,
-}: PublishPanelProps) {
-  return (
-    <motion.div
-      className={styles.publishPanel}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-    >
-      <h3 className={styles.publishTitle}>🚀 Publish to Quanttube</h3>
-      <label className={styles.publishLabel}>
-        Title *
-        <input
-          type="text"
-          className={styles.publishInput}
-          value={title}
-          onChange={(e) => onTitleChange(e.target.value)}
-          maxLength={200}
-          placeholder="My awesome remix"
-          aria-label="Remix title"
-        />
-      </label>
-      <label className={styles.publishLabel}>
-        Description
-        <textarea
-          className={styles.publishTextarea}
-          value={description}
-          onChange={(e) => onDescriptionChange(e.target.value)}
-          maxLength={2000}
-          placeholder="Describe your remix…"
-          rows={2}
-          aria-label="Remix description"
-        />
-      </label>
-      <label className={styles.publishLabel}>
-        Tags (comma-separated)
-        <input
-          type="text"
-          className={styles.publishInput}
-          value={tags}
-          onChange={(e) => onTagsChange(e.target.value)}
-          placeholder="anime, cyberpunk, remix"
-          aria-label="Remix tags"
-        />
-      </label>
-      {error && <p className={styles.errorMsg}>⚠️ {error}</p>}
-      <button
-        className={styles.publishBtn}
-        onClick={onPublish}
-        disabled={!title.trim() || publishing}
-        aria-busy={publishing}
-      >
-        {publishing ? "Publishing…" : "One-Click Publish ▶"}
-      </button>
-    </motion.div>
-  );
-}
+const primaryButtonStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  marginTop: 10,
+  padding: "12px",
+  background: "linear-gradient(90deg,#4361ee,#7209b7)",
+  color: "#fff",
+  border: "none",
+  borderRadius: 8,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const secondaryButtonStyle: React.CSSProperties = {
+  padding: "8px 14px",
+  background: "#4361ee",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+};
+const inputStyle: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  padding: "8px 10px",
+  marginTop: 6,
+  marginBottom: 8,
+  background: "#0f0f17",
+  color: "#fff",
+  border: "1px solid #333",
+  borderRadius: 6,
+  fontSize: 13,
+};
