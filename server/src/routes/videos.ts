@@ -53,6 +53,11 @@ import { synthesizeAudio } from "../services/VoiceSynthesisService";
 import { getRecommendations, registerVideo } from "../services/HybridRecommender";
 import { recordInteraction } from "../services/CollaborativeRecommender";
 import {
+  buildSceneUnderstandingReport,
+  type FrameSignalInput,
+  type SceneUnderstandingReport,
+} from "../services/SceneUnderstandingService";
+import {
   submitSceneDetectionJob,
   getSceneDetectionJob,
   listSceneDetectionJobs,
@@ -135,6 +140,7 @@ const commentsStore = new Map<string, CommentRecord>();
 const likesStore = new Map<string, LikeRecord>(); // key: `${userId}:${videoId}`
 const playlistsStore = new Map<string, PlaylistRecord>();
 const dubJobsStore = new Map<string, DubJob>();
+const sceneReportsStore = new Map<string, SceneUnderstandingReport>();
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -213,6 +219,47 @@ const WatchInteractionSchema = z.object({
   userId: z.string().min(1),
   type: z.enum(["watch", "like", "share", "watchTime"]),
   value: z.number().optional(),
+});
+
+const HistogramTripleSchema = z.object({
+  red: z.array(z.number().nonnegative()).min(8).max(128),
+  green: z.array(z.number().nonnegative()).min(8).max(128),
+  blue: z.array(z.number().nonnegative()).min(8).max(128),
+});
+
+const FrameSignalSchema = z.object({
+  timestampMs: z.number().int().min(0),
+  histogram: HistogramTripleSchema,
+  motionEnergy: z.number().min(0).max(1),
+  audioRms: z.number().min(0).max(1),
+  speechConfidence: z.number().min(0).max(1),
+  sentimentShift: z.number().min(-1).max(1),
+  faceSaliency: z.number().min(0).max(1),
+  textDensity: z.number().min(0).max(1),
+  edgeDensity: z.number().min(0).max(1),
+  sharpness: z.number().min(0).max(1),
+  brightness: z.number().min(0).max(1),
+  contrast: z.number().min(0).max(1),
+  ruleOfThirdsAlignment: z.number().min(0).max(1),
+  objectCount: z.number().min(0).max(20),
+});
+
+const SceneUnderstandingRequestSchema = z.object({
+  durationMs: z.number().int().positive(),
+  frameSignals: z.array(FrameSignalSchema).min(5).max(20_000),
+  config: z
+    .object({
+      histogramCutSensitivity: z.number().min(0.5).max(5).optional(),
+      minSceneDurationMs: z.number().int().min(200).max(60_000).optional(),
+      softTransitionWindow: z.number().int().min(1).max(15).optional(),
+      highlightWindowFrames: z.number().int().min(1).max(40).optional(),
+      highlightTopPercentile: z.number().min(0.2).max(0.99).optional(),
+      maxHighlights: z.number().int().min(1).max(200).optional(),
+      maxThumbnails: z.number().int().min(1).max(200).optional(),
+      targetChapterDurationMs: z.number().int().min(10_000).max(600_000).optional(),
+      maxChapters: z.number().int().min(1).max(40).optional(),
+    })
+    .optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -625,6 +672,128 @@ router.get("/:id/dub", (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
+// AI Scene Understanding
+// ---------------------------------------------------------------------------
+
+router.post("/:id/scene-understanding/analyze", (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id || !videosStore.has(id)) {
+    res.status(404).json({ error: `Video '${id}' not found` });
+    return;
+  }
+
+  const parse = SceneUnderstandingRequestSchema.safeParse(req.body);
+  if (!parse.success) {
+    res.status(400).json({ error: "Validation failed", details: parse.error.issues });
+    return;
+  }
+
+  const { durationMs, frameSignals, config } = parse.data;
+  const report = buildSceneUnderstandingReport({
+    videoId: id,
+    durationMs,
+    frameSignals: frameSignals as FrameSignalInput[],
+    config,
+  });
+  sceneReportsStore.set(id, report);
+
+  logger.info(
+    {
+      videoId: id,
+      frameCount: report.metrics.frameCount,
+      scenes: report.scenes.length,
+      highlights: report.highlights.length,
+      chapters: report.chapters.length,
+    },
+    "Scene understanding report generated"
+  );
+
+  res.status(201).json(report);
+});
+
+router.get("/:id/scene-understanding", (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id || !videosStore.has(id)) {
+    res.status(404).json({ error: `Video '${id}' not found` });
+    return;
+  }
+
+  const report = sceneReportsStore.get(id);
+  if (!report) {
+    res.status(404).json({ error: "Scene understanding report not found for this video" });
+    return;
+  }
+
+  res.json(report);
+});
+
+router.get("/:id/scene-understanding/chapters", (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id || !videosStore.has(id)) {
+    res.status(404).json({ error: `Video '${id}' not found` });
+    return;
+  }
+
+  const report = sceneReportsStore.get(id);
+  if (!report) {
+    res.status(404).json({ error: "Scene understanding report not found for this video" });
+    return;
+  }
+
+  res.json({
+    videoId: id,
+    reportId: report.reportId,
+    total: report.chapters.length,
+    chapters: report.chapters,
+    generatedAt: report.generatedAt,
+  });
+});
+
+router.get("/:id/scene-understanding/highlights", (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id || !videosStore.has(id)) {
+    res.status(404).json({ error: `Video '${id}' not found` });
+    return;
+  }
+
+  const report = sceneReportsStore.get(id);
+  if (!report) {
+    res.status(404).json({ error: "Scene understanding report not found for this video" });
+    return;
+  }
+
+  res.json({
+    videoId: id,
+    reportId: report.reportId,
+    total: report.highlights.length,
+    highlights: report.highlights,
+    generatedAt: report.generatedAt,
+  });
+});
+
+router.get("/:id/scene-understanding/thumbnails", (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id || !videosStore.has(id)) {
+    res.status(404).json({ error: `Video '${id}' not found` });
+    return;
+  }
+
+  const report = sceneReportsStore.get(id);
+  if (!report) {
+    res.status(404).json({ error: "Scene understanding report not found for this video" });
+    return;
+  }
+
+  res.json({
+    videoId: id,
+    reportId: report.reportId,
+    total: report.thumbnails.length,
+    thumbnails: report.thumbnails,
+    generatedAt: report.generatedAt,
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Playlists (separate prefix /playlists is registered in app.ts)
 // This section handles playlist operations mounted at the videos router
 // ---------------------------------------------------------------------------
@@ -948,4 +1117,5 @@ export function _resetVideoStores(): void {
   likesStore.clear();
   playlistsStore.clear();
   dubJobsStore.clear();
+  sceneReportsStore.clear();
 }
