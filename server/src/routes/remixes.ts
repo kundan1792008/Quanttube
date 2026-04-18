@@ -79,7 +79,7 @@ const VideoIdField = z.string().min(1, "videoId is required").max(200);
 
 const StyleRequest = z.object({
   videoId: VideoIdField,
-  style: z.enum(STYLE_PRESETS as readonly [string, ...string[]]),
+  style: z.enum(STYLE_PRESETS),
 });
 
 const BackgroundRequest = z.object({
@@ -95,14 +95,14 @@ const EndingRequest = z.object({
 const EffectsRequest = z.object({
   videoId: VideoIdField,
   effects: z
-    .array(z.enum(VISUAL_EFFECTS as readonly [string, ...string[]]))
+    .array(z.enum(VISUAL_EFFECTS))
     .min(1, "effects must contain at least one entry")
     .max(VISUAL_EFFECTS.length),
 });
 
 const MusicRequest = z.object({
   videoId: VideoIdField,
-  genre: z.enum(MUSIC_GENRES as readonly [string, ...string[]]),
+  genre: z.enum(MUSIC_GENRES),
 });
 
 const SfxRequest = z.object({
@@ -111,7 +111,7 @@ const SfxRequest = z.object({
     .array(
       z.object({
         timestampSecs: z.number().nonnegative(),
-        effectId: z.enum(SFX_IDS as readonly [string, ...string[]]),
+        effectId: z.enum(SFX_IDS),
         volumeDb: z.number().min(-24).max(12).optional(),
       }),
     )
@@ -126,7 +126,7 @@ const SpeedRequest = z.object({
 
 const VoiceRequest = z.object({
   videoId: VideoIdField,
-  targetVoiceId: z.enum(VOICE_BANK as readonly [string, ...string[]]),
+  targetVoiceId: z.enum(VOICE_BANK),
 });
 
 const PublishRequest = z.object({
@@ -160,7 +160,7 @@ router.post("/style", (req: Request, res: Response) => {
   const parse = StyleRequest.safeParse(req.body);
   if (!parse.success) return sendZodError(res, parse.error);
   try {
-    const job = applyStyleTransfer(parse.data.videoId, parse.data.style as never);
+    const job = applyStyleTransfer(parse.data.videoId, parse.data.style);
     logger.info({ jobId: job.jobId, videoId: job.videoId }, "Remix style-transfer queued");
     res.status(202).json(job);
   } catch (err) {
@@ -196,7 +196,7 @@ router.post("/effects", (req: Request, res: Response) => {
   const parse = EffectsRequest.safeParse(req.body);
   if (!parse.success) return sendZodError(res, parse.error);
   try {
-    const job = addVisualEffects(parse.data.videoId, parse.data.effects as never);
+    const job = addVisualEffects(parse.data.videoId, parse.data.effects);
     logger.info({ jobId: job.jobId, videoId: job.videoId }, "Remix visual-effects queued");
     res.status(202).json(job);
   } catch (err) {
@@ -232,7 +232,7 @@ router.post("/audio/music", (req: Request, res: Response) => {
   const parse = MusicRequest.safeParse(req.body);
   if (!parse.success) return sendZodError(res, parse.error);
   try {
-    const job = changeMusic(parse.data.videoId, parse.data.genre as never);
+    const job = changeMusic(parse.data.videoId, parse.data.genre);
     res.status(202).json(job);
   } catch (err) {
     handleThrown(res, err);
@@ -243,7 +243,7 @@ router.post("/audio/sfx", (req: Request, res: Response) => {
   const parse = SfxRequest.safeParse(req.body);
   if (!parse.success) return sendZodError(res, parse.error);
   try {
-    const job = addSoundEffects(parse.data.videoId, parse.data.entries as never);
+    const job = addSoundEffects(parse.data.videoId, parse.data.entries);
     res.status(202).json(job);
   } catch (err) {
     handleThrown(res, err);
@@ -265,7 +265,7 @@ router.post("/audio/voice", (req: Request, res: Response) => {
   const parse = VoiceRequest.safeParse(req.body);
   if (!parse.success) return sendZodError(res, parse.error);
   try {
-    const job = voiceClone(parse.data.videoId, parse.data.targetVoiceId as never);
+    const job = voiceClone(parse.data.videoId, parse.data.targetVoiceId);
     res.status(202).json(job);
   } catch (err) {
     handleThrown(res, err);
@@ -310,12 +310,6 @@ router.post("/jobs/:jobId/publish", (req: Request, res: Response) => {
     res
       .status(409)
       .json({ error: `Remix job '${jobId}' is not completed (status: ${job.status})` });
-    return;
-  }
-  // Detect double-publish → 409
-  const existing = listRemixJobs().some((j) => j.jobId === jobId);
-  if (!existing) {
-    res.status(404).json({ error: `Remix job '${jobId}' not found` });
     return;
   }
 
