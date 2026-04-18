@@ -95,10 +95,10 @@ export const DEFAULT_PREFERENCES: Omit<WellbeingPreferences, "userId" | "updated
   stillWatchingIntervalMinutes: 30,
 };
 
-const MAX_DAILY_LIMIT_MINUTES = 24 * 60;
-const MAX_AUTOPLAY_COUNTDOWN_SECONDS = 60;
-const MAX_STILL_WATCHING_INTERVAL_MINUTES = 8 * 60;
-const MAX_WATCH_DURATION_SECONDS = 12 * 60 * 60;
+export const MAX_DAILY_LIMIT_MINUTES = 24 * 60;
+export const MAX_AUTOPLAY_COUNTDOWN_SECONDS = 60;
+export const MAX_STILL_WATCHING_INTERVAL_MINUTES = 8 * 60;
+export const MAX_WATCH_DURATION_SECONDS = 12 * 60 * 60;
 const INSIGHTS_WINDOW_DAYS = 7;
 
 // ---------------------------------------------------------------------------
@@ -236,7 +236,7 @@ export function recordWatchSession(
   if (!userId) return { error: "userId is required" };
   if (!mediaId) return { error: "mediaId is required" };
   if (!Number.isFinite(durationSeconds) || durationSeconds < 0) {
-    return { error: "durationSeconds must be a non-negative number" };
+    return { error: "durationSeconds must be a non-negative finite number" };
   }
   if (durationSeconds > MAX_WATCH_DURATION_SECONDS) {
     return { error: `durationSeconds must be at most ${MAX_WATCH_DURATION_SECONDS}` };

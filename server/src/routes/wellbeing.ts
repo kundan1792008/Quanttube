@@ -7,6 +7,10 @@ import {
   getStatus,
   getInsights,
   getWatchSessions,
+  MAX_DAILY_LIMIT_MINUTES,
+  MAX_AUTOPLAY_COUNTDOWN_SECONDS,
+  MAX_STILL_WATCHING_INTERVAL_MINUTES,
+  MAX_WATCH_DURATION_SECONDS,
 } from "../services/wellbeing";
 
 const router = Router();
@@ -29,17 +33,21 @@ const QuietHoursSchema = z
 
 const UpdatePreferencesSchema = z
   .object({
-    dailyLimitMinutes: z.number().min(0).max(24 * 60).optional(),
+    dailyLimitMinutes: z.number().min(0).max(MAX_DAILY_LIMIT_MINUTES).optional(),
     quietHours: QuietHoursSchema,
     autoplayEnabled: z.boolean().optional(),
-    autoplayCountdownSeconds: z.number().min(0).max(60).optional(),
-    stillWatchingIntervalMinutes: z.number().min(0).max(8 * 60).optional(),
+    autoplayCountdownSeconds: z.number().min(0).max(MAX_AUTOPLAY_COUNTDOWN_SECONDS).optional(),
+    stillWatchingIntervalMinutes: z
+      .number()
+      .min(0)
+      .max(MAX_STILL_WATCHING_INTERVAL_MINUTES)
+      .optional(),
   })
   .strict();
 
 const RecordSessionSchema = z.object({
   mediaId: z.string().min(1, "mediaId is required"),
-  durationSeconds: z.number().min(0).max(12 * 60 * 60),
+  durationSeconds: z.number().min(0).max(MAX_WATCH_DURATION_SECONDS),
   startedAt: z.string().datetime().optional(),
 });
 
