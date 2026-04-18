@@ -203,3 +203,60 @@ export type {
   ChapterSegment,
   ThumbnailCandidate as SceneThumbnailCandidate,
 } from "./SceneUnderstandingService";
+
+// ---------------------------------------------------------------------------
+// AI Video Remix Engine
+// ---------------------------------------------------------------------------
+
+export {
+  applyStyleTransfer,
+  swapBackground,
+  generateAlternateEnding,
+  addVisualEffects,
+  getRemixJob,
+  listRemixJobs,
+  publishRemix,
+  getTrendingRemixes,
+  getRemixChain,
+  getPublishedRemix,
+  incrementRemixViewCount,
+  remixEvents,
+  _resetRemixEngine,
+  STYLE_PRESETS,
+  VISUAL_EFFECTS,
+  BACKGROUND_PRESETS,
+} from "./RemixEngine";
+export type {
+  StylePreset,
+  VisualEffect,
+  BackgroundPreset,
+  RemixJobType,
+  RemixJobStatus,
+  RemixJob,
+  PublishedRemix,
+  PublishOptions,
+  RemixEventName,
+} from "./RemixEngine";
+
+export {
+  changeMusic,
+  addSoundEffects,
+  speedChange,
+  voiceClone,
+  getAudioJob,
+  listAudioJobs,
+  _resetAudioRemixService,
+  MUSIC_GENRES,
+  SFX_IDS,
+  VOICE_BANK,
+} from "./AudioRemixService";
+export type {
+  MusicGenre,
+  SfxId,
+  VoiceId,
+  AudioJobType,
+  AudioJobStatus,
+  AudioRemixJob,
+  SfxEntry,
+  ResolvedSfxEntry,
+} from "./AudioRemixService";

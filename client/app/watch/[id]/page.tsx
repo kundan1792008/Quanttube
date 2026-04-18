@@ -1,6 +1,6 @@
 "use client";
 
-import React, { use, useMemo, useState, useEffect } from "react";
+import React, { use, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import SmartTranscript from "../../components/SmartTranscript";
@@ -8,11 +8,6 @@ import PremiumPaywall from "../../components/PremiumPaywall";
 import QuantMediaContainer from "../../components/QuantMediaContainer";
 import SocialWatchParty from "../../components/SocialWatchParty";
 import { MediaProvider } from "../../context/MediaContext";
-import ChapterTimeline, {
-  type TimelineChapter,
-  type TimelineHighlight,
-  type TimelineThumbnail,
-} from "../../components/ChapterTimeline";
 
 const LANGUAGES = [
   "English", "Japanese", "Spanish", "French", "German",
@@ -21,7 +16,6 @@ const LANGUAGES = [
 ];
 
 type DubbingState = "idle" | "cloning" | "done";
-const DEMO_VIDEO_DURATION_MS = 18 * 60 * 1000 + 22 * 1000;
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -30,117 +24,6 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const [showPaywall, setShowPaywall] = useState(false);
   const [showAds, setShowAds] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [timelineMs, setTimelineMs] = useState(0);
-  const timelineDurationMs = DEMO_VIDEO_DURATION_MS;
-
-  useEffect(() => {
-    if (!isPlaying) return;
-    const timer = setInterval(() => {
-      setTimelineMs((prev) => {
-        const next = prev + 1000;
-        if (next >= timelineDurationMs) {
-          setIsPlaying(false);
-          return timelineDurationMs;
-        }
-        return next;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isPlaying, timelineDurationMs]);
-
-  const chapters = useMemo<TimelineChapter[]>(
-    () => [
-      {
-        id: "chapter-1",
-        title: "Chapter 1 · Quantum Foundations",
-        startMs: 0,
-        endMs: 4 * 60 * 1000 + 5 * 1000,
-        confidence: 0.86,
-        summary: "Core definitions, visual setup, and baseline narrative context for the episode.",
-        thumbnailUrl: "https://picsum.photos/seed/q1/320/180",
-      },
-      {
-        id: "chapter-2",
-        title: "Chapter 2 · Wave Function Intuition",
-        startMs: 4 * 60 * 1000 + 5 * 1000,
-        endMs: 9 * 60 * 1000 + 20 * 1000,
-        confidence: 0.82,
-        summary: "Dynamic animation segment with high speech confidence and sustained viewer engagement.",
-        thumbnailUrl: "https://picsum.photos/seed/q2/320/180",
-      },
-      {
-        id: "chapter-3",
-        title: "Chapter 3 · Entanglement in Practice",
-        startMs: 9 * 60 * 1000 + 20 * 1000,
-        endMs: 14 * 60 * 1000 + 10 * 1000,
-        confidence: 0.88,
-        summary: "High-impact explanatory scenes with multi-signal highlights and strong composition moments.",
-        thumbnailUrl: "https://picsum.photos/seed/q3/320/180",
-      },
-      {
-        id: "chapter-4",
-        title: "Chapter 4 · Real-World Applications",
-        startMs: 14 * 60 * 1000 + 10 * 1000,
-        endMs: timelineDurationMs,
-        confidence: 0.8,
-        summary: "Case studies and synthesis block concluding with recap and forward-looking insights.",
-        thumbnailUrl: "https://picsum.photos/seed/q4/320/180",
-      },
-    ],
-    [timelineDurationMs]
-  );
-
-  const highlights = useMemo<TimelineHighlight[]>(
-    () => [
-      {
-        id: "h-1",
-        timestampMs: 95_000,
-        score: 1.41,
-        confidence: 0.88,
-        reasons: ["audio-spike", "speech-emphasis"],
-      },
-      {
-        id: "h-2",
-        timestampMs: 3 * 60 * 1000 + 42 * 1000,
-        score: 1.57,
-        confidence: 0.91,
-        reasons: ["motion-spike", "scene-novelty"],
-      },
-      {
-        id: "h-3",
-        timestampMs: 7 * 60 * 1000 + 11 * 1000,
-        score: 1.22,
-        confidence: 0.8,
-        reasons: ["speech-emphasis", "text-overlay"],
-      },
-      {
-        id: "h-4",
-        timestampMs: 10 * 60 * 1000 + 49 * 1000,
-        score: 1.69,
-        confidence: 0.94,
-        reasons: ["sentiment-shift", "face-saliency"],
-      },
-      {
-        id: "h-5",
-        timestampMs: 16 * 60 * 1000 + 30 * 1000,
-        score: 1.3,
-        confidence: 0.83,
-        reasons: ["scene-novelty", "audio-spike"],
-      },
-    ],
-    []
-  );
-
-  const thumbnails = useMemo<TimelineThumbnail[]>(
-    () => [
-      { id: "t-1", timestampMs: 70_000, score: 0.81, previewUrl: "https://picsum.photos/seed/t1/320/180", tags: ["faces"] },
-      { id: "t-2", timestampMs: 260_000, score: 0.84, previewUrl: "https://picsum.photos/seed/t2/320/180", tags: ["action"] },
-      { id: "t-3", timestampMs: 515_000, score: 0.86, previewUrl: "https://picsum.photos/seed/t3/320/180", tags: ["dialogue"] },
-      { id: "t-4", timestampMs: 740_000, score: 0.88, previewUrl: "https://picsum.photos/seed/t4/320/180", tags: ["emotion"] },
-      { id: "t-5", timestampMs: 980_000, score: 0.8, previewUrl: "https://picsum.photos/seed/t5/320/180", tags: ["high-context"] },
-    ],
-    []
-  );
 
   async function handleDubbing(lang: string) {
     if (lang === "English") {
@@ -237,9 +120,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                   >
                     {isPlaying ? "⏸" : "▶"}
                   </button>
-                  <span className="text-white/40 text-sm">
-                    {Math.floor(timelineMs / 60_000)}:{String(Math.floor((timelineMs % 60_000) / 1000)).padStart(2, "0")} / 18:22
-                  </span>
+                  <span className="text-white/40 text-sm">0:00 / 18:22</span>
                 </div>
 
                 {/* Auto-Dubbing Dropdown */}
@@ -294,20 +175,6 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                 </button>
               </div>
             </div>
-
-            <ChapterTimeline
-              durationMs={timelineDurationMs}
-              currentTimeMs={timelineMs}
-              chapters={chapters}
-              highlights={highlights}
-              thumbnails={thumbnails}
-              onSeek={setTimelineMs}
-              onChapterSelect={() => {
-                if (!isPlaying) {
-                  setIsPlaying(true);
-                }
-              }}
-            />
           </div>
 
           {/* Sidebar – Smart Transcript */}
