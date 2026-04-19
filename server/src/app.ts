@@ -6,6 +6,7 @@ import reelsRoutes from "./routes/reels";
 import streamRoutes from "./routes/stream";
 import cinemaRoutes from "./routes/cinema";
 import feedRoutes from "./routes/feed";
+import wellbeingRoutes from "./routes/wellbeing";
 import videosRoutes, { playlistsRouter, recommendationsRouter } from "./routes/videos";
 import remixesRoutes from "./routes/remixes";
 import logger from "./logger";
@@ -40,6 +41,9 @@ app.use("/api/v1/cinema", cinemaRoutes);
 
 /** Telepathic Feed Engine – cross-app signal ingestion + recommendations (v1) */
 app.use("/api/v1/feed", feedRoutes);
+
+/** Watch Wellbeing – user-controlled limits, quiet hours, autoplay, insights (v1) */
+app.use("/api/v1/wellbeing", wellbeingRoutes);
 
 /** Video pipeline: upload, transcode, dubbing, CRUD */
 app.use("/api/v1/videos", videosRoutes);
