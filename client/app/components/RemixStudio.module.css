@@ -1,0 +1,715 @@
+/* RemixStudio.module.css */
+
+/* ── Outer wrapper ──────────────────────────────────────────────── */
+.studio {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #0a0a0a;
+  color: #ededed;
+  font-family: var(--font-geist-sans, sans-serif);
+  padding: 1.5rem;
+  gap: 1.5rem;
+}
+
+/* ── Header ─────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.titleEmoji {
+  font-size: 1.5rem;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  color: #888;
+  margin: 0;
+  flex: 1;
+}
+
+.randomizeBtn {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  background: #181818;
+  color: #ddd;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.randomizeBtn:hover {
+  border-color: #888;
+  background: #222;
+  color: #fff;
+}
+
+/* ── Main layout (2-column on wide screens) ─────────────────────── */
+.mainLayout {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .mainLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Controls panel ─────────────────────────────────────────────── */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 1rem;
+  padding: 1.25rem;
+}
+
+/* ── Tab navigation ─────────────────────────────────────────────── */
+.tabNav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tabBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.tabBtn:hover {
+  border-color: #555;
+  color: #ddd;
+  background: #181818;
+}
+
+.tabBtnActive {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
+/* ── Tab panel ──────────────────────────────────────────────────── */
+.tabPanel {
+  min-height: 180px;
+}
+
+.panelHint {
+  font-size: 0.78rem;
+  color: #888;
+  margin: 0 0 0.75rem;
+}
+
+/* ── Effect grid ────────────────────────────────────────────────── */
+.effectGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.5rem;
+}
+
+.effectGridSmall {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 0.4rem;
+}
+
+.effectCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.6rem 0.4rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.625rem;
+  background: #181818;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 0.72rem;
+  transition: all 0.15s;
+}
+
+.effectCard:hover {
+  border-color: #555;
+  background: #222;
+  color: #fff;
+}
+
+.effectCardSelected {
+  border-color: #1db954;
+  background: #0d2e1a;
+  color: #1db954;
+}
+
+.effectEmoji {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.effectLabel {
+  text-align: center;
+  line-height: 1.2;
+}
+
+.checkMark {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 0.65rem;
+  color: #1db954;
+}
+
+/* ── Alternate ending panel ─────────────────────────────────────── */
+.endingPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.promptTextarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.5rem;
+  background: #181818;
+  color: #ededed;
+  font-size: 0.8rem;
+  resize: vertical;
+  min-height: 90px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.promptTextarea:focus {
+  outline: none;
+  border-color: #555;
+}
+
+.charCount {
+  font-size: 0.7rem;
+  color: #666;
+  text-align: right;
+  margin: 0;
+}
+
+.charCountWarn {
+  color: #d4a737;
+}
+
+/* ── Apply button ───────────────────────────────────────────────── */
+.applyBtn {
+  padding: 0.65rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #1db954;
+  color: #000;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.applyBtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.applyBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Error message ──────────────────────────────────────────────── */
+.errorMsg {
+  font-size: 0.78rem;
+  color: #ff8f8f;
+  margin: 0;
+}
+
+/* ── Preview section ────────────────────────────────────────────── */
+.previewSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.previewRow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.previewPane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.previewLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.videoPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  background: #181818;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.75rem;
+  gap: 0.5rem;
+  color: #666;
+}
+
+.videoPlaceholderRemix {
+  border-color: #1db954;
+  background: #0d2e1a;
+}
+
+.videoIcon {
+  font-size: 2rem;
+}
+
+.videoIdLabel {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.outputLink {
+  font-size: 0.75rem;
+  color: #9ac6ff;
+  text-decoration: none;
+}
+
+.outputLink:hover {
+  text-decoration: underline;
+}
+
+.previewDivider {
+  font-size: 1.5rem;
+  color: #444;
+  user-select: none;
+}
+
+/* ── Progress panel ─────────────────────────────────────────────── */
+.progressPanel {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.jobType {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ccc;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.jobStatus {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.progressBarTrack {
+  height: 6px;
+  background: #2a2a2a;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progressBarFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.progressMeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: #666;
+}
+
+.jobId {
+  font-family: monospace;
+}
+
+.scriptPreview {
+  border: 1px solid #2a2a2a;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 0.78rem;
+}
+
+.scriptPreview p {
+  margin: 0.25rem 0 0;
+  color: #bbb;
+  font-style: italic;
+}
+
+.lipSync {
+  font-size: 0.78rem;
+  color: #aaa;
+  margin: 0;
+}
+
+/* ── Audio panel ────────────────────────────────────────────────── */
+.audioPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.audioSection {
+  border: 1px solid #1e1e1e;
+  border-radius: 0.75rem;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: #0d0d0d;
+}
+
+.audioSectionTitle {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0;
+  color: #ccc;
+}
+
+.audioApplyBtn {
+  align-self: flex-start;
+  padding: 0.4rem 1rem;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  background: #181818;
+  color: #ddd;
+  cursor: pointer;
+  font-size: 0.78rem;
+  transition: all 0.15s;
+}
+
+.audioApplyBtn:hover:not(:disabled) {
+  border-color: #1db954;
+  color: #1db954;
+}
+
+.audioApplyBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Speed slider ───────────────────────────────────────────────── */
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.speedSlider {
+  flex: 1;
+  accent-color: #1db954;
+}
+
+.sliderValue {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1db954;
+  min-width: 48px;
+  text-align: right;
+}
+
+/* ── Voice input ────────────────────────────────────────────────── */
+.voiceInput {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.5rem;
+  background: #181818;
+  color: #ededed;
+  font-size: 0.8rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.voiceInput:focus {
+  outline: none;
+  border-color: #555;
+}
+
+/* ── SFX timeline ───────────────────────────────────────────────── */
+.timelineAddRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.timelineLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: #aaa;
+}
+
+.timelineInput {
+  width: 60px;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.375rem;
+  background: #181818;
+  color: #ededed;
+  font-size: 0.75rem;
+}
+
+.timelineInputSmall {
+  width: 44px;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.375rem;
+  background: #181818;
+  color: #ededed;
+  font-size: 0.75rem;
+}
+
+.timelineSelect {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.375rem;
+  background: #181818;
+  color: #ededed;
+  font-size: 0.75rem;
+}
+
+.addSfxBtn {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid #1db954;
+  border-radius: 999px;
+  background: transparent;
+  color: #1db954;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.addSfxBtn:hover {
+  background: #0d2e1a;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.timelineEmpty {
+  font-size: 0.75rem;
+  color: #555;
+  margin: 0;
+  font-style: italic;
+}
+
+.timelineEntry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid #1e1e1e;
+  border-radius: 0.375rem;
+  padding: 0.3rem 0.5rem;
+  background: #161616;
+  font-size: 0.75rem;
+}
+
+.timelineTime {
+  font-family: monospace;
+  color: #888;
+  min-width: 36px;
+}
+
+.timelineEffect {
+  flex: 1;
+  color: #ccc;
+}
+
+.timelineVol {
+  color: #888;
+  min-width: 28px;
+  text-align: right;
+}
+
+.removeBtn {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.removeBtn:hover {
+  color: #ff8f8f;
+}
+
+/* ── Publish panel ──────────────────────────────────────────────── */
+.publishPanel {
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.publishTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+  color: #ccc;
+}
+
+.publishLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.publishInput {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.5rem;
+  background: #181818;
+  color: #ededed;
+  font-size: 0.8rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.publishInput:focus {
+  outline: none;
+  border-color: #555;
+}
+
+.publishTextarea {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.5rem;
+  background: #181818;
+  color: #ededed;
+  font-size: 0.8rem;
+  width: 100%;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.publishTextarea:focus {
+  outline: none;
+  border-color: #555;
+}
+
+.publishBtn {
+  padding: 0.6rem 1.25rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #1db954;
+  color: #000;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: opacity 0.2s;
+}
+
+.publishBtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.publishBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Publish success ────────────────────────────────────────────── */
+.publishSuccess {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid #1db954;
+  border-radius: 0.75rem;
+  background: #0d2e1a;
+  font-size: 0.82rem;
+}
+
+.publishSuccess span:first-child {
+  font-size: 1.5rem;
+}
+
+.publishSuccess p {
+  margin: 0;
+  color: #ccc;
+}
+
+.remixId {
+  font-family: monospace;
+  font-size: 0.7rem;
+  color: #666;
+}
+
+.attribution {
+  font-size: 0.7rem;
+  color: #888;
+}

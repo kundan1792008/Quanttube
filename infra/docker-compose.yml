@@ -1,0 +1,48 @@
+# Quanttube CDN Streaming Stack – local development / CI simulation
+#
+# Services:
+#   cdn-edge   – nginx configured for HLS and DASH chunk delivery
+#   api        – Quanttube Express backend (Format-Shifting Engine)
+#
+# In production each "cdn-edge" instance maps to a real Edge PoP; the
+# Terraform config in ./terraform/ provisions those on a cloud provider.
+
+version: "3.9"
+
+services:
+  # ---------------------------------------------------------------------------
+  # CDN Edge node – serves HLS (.m3u8 / .ts) and DASH (.mpd / .m4s) segments
+  # ---------------------------------------------------------------------------
+  cdn-edge:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/hls-dash.conf:/etc/nginx/conf.d/default.conf:ro
+      - hls-segments:/var/hls
+      - dash-segments:/var/dash
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Quanttube API – Format-Shifting Engine
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      CDN_BASE_URL: http://cdn-edge
+    depends_on:
+      cdn-edge:
+        condition: service_healthy
+
+volumes:
+  hls-segments:
+  dash-segments:

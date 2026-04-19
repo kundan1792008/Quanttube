@@ -7,6 +7,8 @@ import streamRoutes from "./routes/stream";
 import cinemaRoutes from "./routes/cinema";
 import feedRoutes from "./routes/feed";
 import wellbeingRoutes from "./routes/wellbeing";
+import videosRoutes, { playlistsRouter, recommendationsRouter } from "./routes/videos";
+import remixesRoutes from "./routes/remixes";
 import logger from "./logger";
 import { globalErrorHandler } from "./middleware/error";
 
@@ -42,6 +44,19 @@ app.use("/api/v1/feed", feedRoutes);
 
 /** Watch Wellbeing – user-controlled limits, quiet hours, autoplay, insights (v1) */
 app.use("/api/v1/wellbeing", wellbeingRoutes);
+
+/** Video pipeline: upload, transcode, dubbing, CRUD */
+app.use("/api/v1/videos", videosRoutes);
+
+/** Playlists */
+app.use("/api/v1/playlists", playlistsRouter);
+
+/** Hybrid recommendations */
+app.use("/api/v1/recommendations", recommendationsRouter);
+
+/** AI Video Remix Engine – style transfer, background swap, alternate endings,
+ *  visual effects, audio remix, trending feed, remix chains. */
+app.use("/api/remixes", remixesRoutes);
 
 /** Global error handler – must be registered last */
 app.use(globalErrorHandler);

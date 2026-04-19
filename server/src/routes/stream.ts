@@ -24,6 +24,17 @@ const StreamQuerySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+
+interface StreamSyncMetadata {
+  /** Target lip-sync accuracy in milliseconds. Sub-100ms is production quality. */
+  targetSyncOffsetMs: number;
+  /** Streaming protocol combination active for this tier. */
+  protocol: "hls+dash" | "hls-audio-only";
+}
+
+// ---------------------------------------------------------------------------
 // Bitrate ladder (HLS) – stub values
 // ---------------------------------------------------------------------------
 
@@ -68,6 +79,7 @@ const STREAM_CACHE_TTL_SECONDS = 60;
 interface StreamMeta {
   allTiers: typeof BITRATE_LADDER;
   hlsManifestBaseUrl: string;
+  dashManifestBaseUrl: string;
 }
 
 /**
@@ -99,10 +111,10 @@ async function getCachedStreamMeta(key: string): Promise<StreamMeta | null> {
 }
 
 /**
- * Adaptive HLS streaming stub.
+ * Adaptive HLS/DASH streaming stub.
  *
- * Returns a stub HLS manifest URL and the selected bitrate tier for the
- * given mediaId, dynamically adjusted based on the user's current
+ * Returns stub HLS and DASH manifest URLs and the selected bitrate tier for
+ * the given mediaId, dynamically adjusted based on the user's current
  * engagement state (`engagementScore` query param, 0-1).
  *
  * Video metadata (bitrate ladder, CDN manifest URL) is cached in Redis
@@ -131,11 +143,15 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
   const { userId, engagementScore = 0.5, mode } = queryParse.data;
   const resolvedMode = mode ?? "cinema";
 
-  // Check cache for video metadata (bitrate ladder + CDN manifest URL)
+  // Check cache for video metadata (bitrate ladder + CDN manifest URLs)
   const cacheKey = streamCacheKey(mediaId, resolvedMode);
   const cachedMeta = await getCachedStreamMeta(cacheKey);
   if (cachedMeta) {
     const tier = selectBitrateTier(engagementScore, resolvedMode);
+    const syncMetadata: StreamSyncMetadata = {
+      targetSyncOffsetMs: 100,
+      protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
+    };
     logger.info(
       { mediaId, userId, engagementScore, mode: resolvedMode, resolution: tier.resolution, cacheHit: true },
       "Stream tier selected (cache hit)"
@@ -145,10 +161,12 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
       userId: userId ?? null,
       selectedTier: tier,
       hlsManifestUrl: `${cachedMeta.hlsManifestBaseUrl}/${tier.resolution}/master.m3u8`,
+      dashManifestUrl: `${cachedMeta.dashManifestBaseUrl}/${tier.resolution}/manifest.mpd`,
       allTiers: cachedMeta.allTiers,
       engagementScore,
       mode: resolvedMode,
-      note: "HLS streaming stub – real CDN URL would be served here",
+      syncMetadata,
+      note: "HLS/DASH adaptive streaming stub – real CDN URL would be served here",
     });
     return;
   }
@@ -156,7 +174,8 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
   // Cache miss – compute and store metadata
   const tier = selectBitrateTier(engagementScore, resolvedMode);
   const hlsManifestBaseUrl = `${CDN_BASE_URL}/hls/${encodeURIComponent(mediaId)}`;
-  const meta: StreamMeta = { allTiers: BITRATE_LADDER, hlsManifestBaseUrl };
+  const dashManifestBaseUrl = `${CDN_BASE_URL}/dash/${encodeURIComponent(mediaId)}`;
+  const meta: StreamMeta = { allTiers: BITRATE_LADDER, hlsManifestBaseUrl, dashManifestBaseUrl };
 
   await cache.set(cacheKey, JSON.stringify(meta), STREAM_CACHE_TTL_SECONDS);
 
@@ -165,15 +184,22 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
     "Stream tier selected"
   );
 
+  const syncMetadata: StreamSyncMetadata = {
+    targetSyncOffsetMs: 100,
+    protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
+  };
+
   res.json({
     mediaId,
     userId: userId ?? null,
     selectedTier: tier,
     hlsManifestUrl: `${hlsManifestBaseUrl}/${tier.resolution}/master.m3u8`,
+    dashManifestUrl: `${dashManifestBaseUrl}/${tier.resolution}/manifest.mpd`,
     allTiers: BITRATE_LADDER,
     engagementScore,
     mode: resolvedMode,
-    note: "HLS streaming stub – real CDN URL would be served here",
+    syncMetadata,
+    note: "HLS/DASH adaptive streaming stub – real CDN URL would be served here",
   });
 }
 
