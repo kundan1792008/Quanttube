@@ -9,9 +9,12 @@
 import request from "supertest";
 import app from "../app";
 import { _resetTelepathicFeed } from "../services/telepathic-feed";
+import { _resetAvatarSynthJobs, _resetNarrativeGenerator } from "../services";
 
 beforeEach(() => {
   _resetTelepathicFeed();
+  _resetNarrativeGenerator();
+  _resetAvatarSynthJobs();
 });
 
 // ---------------------------------------------------------------------------
@@ -213,5 +216,109 @@ describe("GET /api/v1/feed/:userId/signals", () => {
     expect(res.status).toBe(200);
     expect(res.body.count).toBe(1);
     expect(res.body.signals[0].signalType).toBe("QUANTSINK_POST_REACTION");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Generative Narrative Engine – narrative + avatar synth + dubbing simulation
+// ---------------------------------------------------------------------------
+
+describe("POST /api/v1/narrative/next", () => {
+  it("generates a narrative segment with deterministic shape", async () => {
+    const res = await request(app).post("/api/v1/narrative/next").send({
+      userId: "user-arc-1",
+      preferences: ["mystery", "action"],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.segmentNumber).toBe(1);
+    expect(res.body.preferenceFocus).toBe("mystery");
+    expect(res.body.stakeLevel).toBeGreaterThanOrEqual(3);
+    expect(res.body.choices).toHaveLength(3);
+    expect(typeof res.body.continuityToken).toBe("string");
+  });
+
+  it("increments segment numbers for the same user/preferences thread", async () => {
+    await request(app).post("/api/v1/narrative/next").send({
+      userId: "user-arc-2",
+      preferences: ["romance"],
+    });
+
+    const second = await request(app).post("/api/v1/narrative/next").send({
+      userId: "user-arc-2",
+      preferences: ["romance"],
+      selectedChoiceId: "choice-1-1",
+    });
+
+    expect(second.status).toBe(200);
+    expect(second.body.segmentNumber).toBe(2);
+    expect(second.body.preferenceFocus).toBe("romance");
+  });
+
+  it("rejects unknown narrative preferences", async () => {
+    const res = await request(app).post("/api/v1/narrative/next").send({
+      userId: "user-arc-3",
+      preferences: ["unknown-genre"],
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/v1/narrative/deep-dubbing-simulation", () => {
+  it("queues an audio block for deep-dubbing simulation", async () => {
+    const queued = await request(app)
+      .post("/api/v1/narrative/deep-dubbing-simulation")
+      .send({
+        audioBlockBase64: "QUJDREVGR0g=",
+        targetLanguage: "es",
+        sceneId: "scene-001",
+      });
+
+    expect(queued.status).toBe(202);
+    expect(queued.body.status).toBe("queued");
+    expect(queued.body.bytesQueued).toBeGreaterThan(0);
+
+    const fetched = await request(app).get(
+      `/api/v1/narrative/deep-dubbing-simulation/${queued.body.jobId}`
+    );
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.jobId).toBe(queued.body.jobId);
+  });
+});
+
+describe("POST /api/v1/narrative/avatar-synth/jobs", () => {
+  it("creates an avatar synth job and returns synthesized frame metrics", async () => {
+    const created = await request(app)
+      .post("/api/v1/narrative/avatar-synth/jobs")
+      .send({
+        avatarId: "avatar-user-7",
+        sceneId: "scene-neon-22",
+        frameIds: ["f1", "f2", "f2"],
+        lightingPreset: "neon-night",
+      });
+
+    expect(created.status).toBe(201);
+    expect(created.body.model).toBe("stable-diffusion-sim-v1");
+    expect(created.body.status).toBe("completed");
+    expect(created.body.synthesizedFrames).toHaveLength(2);
+    expect(created.body.synthesizedFrames[0].blendStrength).toBeGreaterThanOrEqual(0.72);
+    expect(created.body.synthesizedFrames[0].lightingMatch).toBeLessThanOrEqual(1);
+
+    const fetched = await request(app).get(
+      `/api/v1/narrative/avatar-synth/jobs/${created.body.jobId}`
+    );
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.avatarId).toBe("avatar-user-7");
+  });
+
+  it("rejects invalid frameIds payloads", async () => {
+    const res = await request(app)
+      .post("/api/v1/narrative/avatar-synth/jobs")
+      .send({
+        avatarId: "avatar-user-7",
+        sceneId: "scene-neon-22",
+        frameIds: [],
+      });
+    expect(res.status).toBe(400);
   });
 });

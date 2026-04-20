@@ -279,3 +279,32 @@ export type {
   SfxEntry,
   ResolvedSfxEntry,
 } from "./AudioRemixService";
+
+export {
+  NARRATIVE_PREFERENCES,
+  generateNarrativeSegment,
+  enqueueDeepDubbingSimulation,
+  getDeepDubbingSimulationJob,
+  _resetNarrativeGenerator,
+} from "./NarrativeGenerator";
+export type {
+  NarrativePreference,
+  GenerateNarrativeInput,
+  NarrativeChoice,
+  NarrativeSegment,
+  DeepDubbingSimulationInput,
+  DeepDubbingSimulationJob,
+} from "./NarrativeGenerator";
+
+export {
+  LIGHTING_PRESETS,
+  enqueueAvatarSynthJob,
+  getAvatarSynthJob,
+  _resetAvatarSynthJobs,
+} from "./AvatarSynth";
+export type {
+  LightingPreset,
+  AvatarFrameSynthesis,
+  EnqueueAvatarSynthInput,
+  AvatarSynthJob,
+} from "./AvatarSynth";

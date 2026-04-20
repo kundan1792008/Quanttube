@@ -4,6 +4,7 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlaybackMode, useMedia } from "../context/MediaContext";
 import styles from "./QuantMediaContainer.module.css";
+import PlotSelector, { PlotChoice } from "./PlotSelector";
 
 const QUANTTUBE_CONFIG = {
   apiBaseUrl: process.env.NEXT_PUBLIC_QUANTTUBE_API_BASE_URL ?? "http://localhost:4000",
@@ -226,6 +227,28 @@ function ShortReelView({
   onRefreshDashboard,
   onSimulateClick,
 }: ShortReelViewProps) {
+  const [selectedPlotId, setSelectedPlotId] = useState<string | null>(null);
+  const choices = useMemo<PlotChoice[]>(
+    () => [
+      {
+        id: "plot-negotiate",
+        label: "Negotiate with the rival pilot before the storm closes in",
+        contextHint: "Higher trust arc, lower immediate risk",
+      },
+      {
+        id: "plot-pursue",
+        label: "Pursue the encrypted beacon through the restricted zone",
+        contextHint: "High-intensity chase with uncertain payoff",
+      },
+      {
+        id: "plot-regroup",
+        label: "Regroup with allies and reroute through the old tunnel",
+        contextHint: "Safer route, possible lost time",
+      },
+    ],
+    []
+  );
+
   return (
     <div className={styles.reelInner}>
       <div className={styles.videoPlaceholder}>
@@ -297,6 +320,12 @@ function ShortReelView({
               </div>
             ))}
           </div>
+        )}
+        <PlotSelector choices={choices} onSelect={(choice) => setSelectedPlotId(choice.id)} />
+        {selectedPlotId && (
+          <p>
+            <strong>Active branch:</strong> {selectedPlotId}
+          </p>
         )}
       </section>
     </div>

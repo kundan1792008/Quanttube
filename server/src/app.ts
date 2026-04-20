@@ -9,6 +9,7 @@ import feedRoutes from "./routes/feed";
 import wellbeingRoutes from "./routes/wellbeing";
 import videosRoutes, { playlistsRouter, recommendationsRouter } from "./routes/videos";
 import remixesRoutes from "./routes/remixes";
+import narrativeRoutes from "./routes/narrative";
 import logger from "./logger";
 import { globalErrorHandler } from "./middleware/error";
 
@@ -57,6 +58,9 @@ app.use("/api/v1/recommendations", recommendationsRouter);
 /** AI Video Remix Engine – style transfer, background swap, alternate endings,
  *  visual effects, audio remix, trending feed, remix chains. */
 app.use("/api/remixes", remixesRoutes);
+
+/** Generative narrative + avatar synthesis + deep-dubbing simulation (v1) */
+app.use("/api/v1/narrative", narrativeRoutes);
 
 /** Global error handler – must be registered last */
 app.use(globalErrorHandler);
