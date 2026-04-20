@@ -839,6 +839,16 @@ export default function AccessibilityPlayer({
     }, 3000);
   }, [isPlaying]);
 
+  const toggleFullscreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
@@ -1015,16 +1025,6 @@ export default function AccessibilityPlayer({
     const v = videoRef.current;
     if (!v) return;
     v.currentTime = Number(e.target.value);
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
   }, []);
 
   const handleCaptionStyleChange = useCallback((updates: Partial<CaptionStyleConfig>) => {

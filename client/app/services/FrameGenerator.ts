@@ -45,12 +45,11 @@ interface VideoFrameSample {
   height: number;
 }
 
-interface HTMLVideoElementWithFrameCallback extends HTMLVideoElement {
+type HTMLVideoElementWithFrameCallback = HTMLVideoElement & {
   requestVideoFrameCallback?: (
     callback: (now: number, metadata: VideoFrameCallbackMetadata) => void
   ) => number;
-  cancelVideoFrameCallback?: (handle: number) => void;
-}
+};
 
 type QuantumTelemetryListener = (telemetry: QuantumFrameTelemetry) => void;
 

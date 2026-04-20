@@ -345,7 +345,7 @@ export default function VideoPlayer({
       playbackRate,
       throughputKbps: connection?.downlink ? Math.round(connection.downlink * 1000) : undefined,
     });
-  }, [duration]);
+  }, [currentQuality, duration, isBuffering, playbackRate, qualityLevels]);
 
   const handleDurationChange = useCallback(() => {
     const video = videoRef.current;
@@ -430,6 +430,17 @@ export default function VideoPlayer({
       if (isPlaying) setShowControls(false);
     }, 3000);
   }, [isPlaying]);
+
+  const toggleFullscreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Keyboard shortcuts
@@ -523,17 +534,6 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
     video.muted = !video.muted;
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
-    }
   }, []);
 
   const togglePip = useCallback(async () => {
