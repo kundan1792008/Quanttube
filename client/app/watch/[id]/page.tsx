@@ -48,6 +48,21 @@ interface StreamMetadataResponse {
   quantumInterpolation: QuantumInterpolationProfile;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function deriveEngagementScore(analytics: PlayerAnalytics | null): number {
+  if (!analytics) return 0.7;
+  const completionComponent = analytics.completionRate * 0.25;
+  const watchComponent = Math.min(0.15, analytics.watchTime / 6000);
+  const bufferingPenalty = analytics.bufferingEvents * 0.08;
+  const switchingPenalty = analytics.qualitySwitches * 0.03;
+  return Number(
+    clamp(0.55 + completionComponent + watchComponent - bufferingPenalty - switchingPenalty, 0.2, 0.95).toFixed(2)
+  );
+}
+
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return (
@@ -70,6 +85,8 @@ function WatchExperience({ id }: { id: string }) {
   const [streamTier, setStreamTier] = useState("demo");
   const [quantumProfile, setQuantumProfile] = useState<QuantumInterpolationProfile>(DEFAULT_QUANTUM_PROFILE);
   const lastVisualStreamRef = React.useRef(FALLBACK_VIDEO_URL);
+  const engagementScore = useMemo(() => deriveEngagementScore(playerAnalytics), [playerAnalytics]);
+  const engagementBucket = useMemo(() => Number((Math.round(engagementScore * 10) / 10).toFixed(1)), [engagementScore]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,7 +97,7 @@ function WatchExperience({ id }: { id: string }) {
 
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/v1/stream/${encodeURIComponent(id)}?engagementScore=0.85&mode=${encodeURIComponent(state.mode)}`,
+          `${API_BASE_URL}/api/v1/stream/${encodeURIComponent(id)}?engagementScore=${engagementBucket}&mode=${encodeURIComponent(state.mode)}`,
           { signal: controller.signal }
         );
         if (!response.ok) throw new Error(`Stream metadata request failed with ${response.status}`);
@@ -112,7 +129,7 @@ function WatchExperience({ id }: { id: string }) {
 
     void loadStreamMetadata();
     return () => controller.abort();
-  }, [id, state.mode]);
+  }, [engagementBucket, id, state.mode]);
 
   const playbackHealth = useMemo(() => {
     if (!playerAnalytics) return "Collecting playback telemetry";
@@ -227,6 +244,9 @@ function WatchExperience({ id }: { id: string }) {
                   </span>
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/70">
                     Mode: {state.mode}
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/70">
+                    Engagement: {engagementBucket.toFixed(1)}
                   </span>
                   <span className="text-sm text-white/50">{playbackHealth}</span>
                   {streamError && <span className="text-sm text-amber-300">{streamError}</span>}

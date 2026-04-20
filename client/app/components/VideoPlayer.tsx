@@ -628,6 +628,11 @@ export default function VideoPlayer({
     return "Interpolation stable";
   }, [quantumTelemetry, recoveryTelemetry]);
 
+  const displaySourceFrameRate = useMemo(
+    () => (quantumTelemetry?.measuredSourceFrameRate ?? resolvedQuantumProfile.sourceFrameRate).toFixed(1),
+    [quantumTelemetry, resolvedQuantumProfile.sourceFrameRate]
+  );
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -687,8 +692,7 @@ export default function VideoPlayer({
             </span>
           </div>
           <div style={{ fontSize: 12, opacity: 0.9 }}>
-            {(quantumTelemetry?.measuredSourceFrameRate ?? resolvedQuantumProfile.sourceFrameRate).toFixed(1)} fps →{" "}
-            {quantumTelemetry?.targetFrameRate ?? resolvedQuantumProfile.targetFrameRate} fps
+            {displaySourceFrameRate} fps → {quantumTelemetry?.targetFrameRate ?? resolvedQuantumProfile.targetFrameRate} fps
           </div>
           <div style={{ fontSize: 11, opacity: 0.78 }}>
             Renderer: {formatRendererLabel(quantumTelemetry?.renderer ?? resolvedQuantumProfile.preferredRenderer)}

@@ -23,6 +23,12 @@ interface BuildQuantumInterpolationPlanInput {
   selectedResolution: string;
 }
 
+const TARGET_FRAME_RATES: Record<BuildQuantumInterpolationPlanInput["mode"], number> = {
+  cinema: 120,
+  "short-reel": 90,
+  "audio-only": 0,
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -58,7 +64,7 @@ export function buildQuantumInterpolationPlan(
   }
 
   const sourceFrameRate = inferSourceFrameRate(input.selectedResolution);
-  const targetFrameRate = input.mode === "short-reel" ? 90 : 120;
+  const targetFrameRate = TARGET_FRAME_RATES[input.mode];
   const headroom = clamp(input.engagementScore, 0, 1);
   const frameHistorySize = input.mode === "short-reel" ? 8 : 12;
   const memoryBudgetMb =
