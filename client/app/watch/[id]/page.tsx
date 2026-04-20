@@ -63,6 +63,16 @@ function deriveEngagementScore(analytics: PlayerAnalytics | null): number {
   );
 }
 
+function isSafeMediaId(value: string): boolean {
+  return (
+    value.length > 0 &&
+    !value.includes("..") &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    /^[a-zA-Z0-9_-]+$/.test(value)
+  );
+}
+
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return (
@@ -86,7 +96,7 @@ function WatchExperience({ id }: { id: string }) {
   const [quantumProfile, setQuantumProfile] = useState<QuantumInterpolationProfile>(DEFAULT_QUANTUM_PROFILE);
   const lastVisualStreamRef = React.useRef(FALLBACK_VIDEO_URL);
   const safeVideoId = useMemo(
-    () => (/^[a-zA-Z0-9_-]+$/.test(id) ? id : "demo-video"),
+    () => (isSafeMediaId(id) ? id : "demo-video"),
     [id]
   );
   const engagementScore = useMemo(() => deriveEngagementScore(playerAnalytics), [playerAnalytics]);
@@ -105,7 +115,9 @@ function WatchExperience({ id }: { id: string }) {
 
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/v1/stream/${encodeURIComponent(safeVideoId)}?engagementScore=${engagementBucket}&mode=${encodeURIComponent(state.mode)}`,
+          `${API_BASE_URL}/api/v1/stream/${encodeURIComponent(safeVideoId)}?engagementScore=${encodeURIComponent(
+            engagementBucket.toString()
+          )}&mode=${encodeURIComponent(state.mode)}`,
           { signal: controller.signal }
         );
         if (!response.ok) throw new Error(`Stream metadata request failed with ${response.status}`);

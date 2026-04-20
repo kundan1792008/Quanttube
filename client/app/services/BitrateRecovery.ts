@@ -33,6 +33,7 @@ interface RecoverySample {
 type RecoveryListener = (telemetry: RecoveryTelemetry) => void;
 
 const MIN_BITRATE_KBPS = 96;
+const HARD_DROP_BUFFER_RATIO = 0.35;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -80,7 +81,7 @@ export class QuantumBitrateRecovery {
     const currentBitrateKbps = Math.max(MIN_BITRATE_KBPS, input.currentBitrateKbps || MIN_BITRATE_KBPS);
     const bufferFloor = this.profile.recovery.minBufferedSeconds;
     const hasHardDrop =
-      input.buffering && input.bufferedAheadSeconds <= bufferFloor * 0.35;
+      input.buffering && input.bufferedAheadSeconds <= bufferFloor * HARD_DROP_BUFFER_RATIO;
     const atRisk =
       input.bufferedAheadSeconds < bufferFloor ||
       (input.throughputKbps !== undefined && input.throughputKbps < currentBitrateKbps * 0.75);

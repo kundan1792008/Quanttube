@@ -53,6 +53,8 @@ type HTMLVideoElementWithFrameCallback = HTMLVideoElement & {
 
 type QuantumTelemetryListener = (telemetry: QuantumFrameTelemetry) => void;
 
+const MAX_MEMORY_PRESSURE_TRIM_RATIO = 0.5;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -195,7 +197,12 @@ export class QuantumFrameGenerator {
     }
 
     const memoryPressureRatio = estimatedMemoryMb / this.profile.memoryBudgetMb;
-    const framesToTrim = Math.ceil(Math.min(this.frameHistory.length - 2, memoryPressureRatio));
+    const framesToTrim = Math.ceil(
+      Math.min(
+        this.frameHistory.length - 2,
+        Math.max(1, this.frameHistory.length * Math.min(MAX_MEMORY_PRESSURE_TRIM_RATIO, memoryPressureRatio - 1))
+      )
+    );
     this.frameHistory.splice(0, framesToTrim);
   }
 
@@ -240,8 +247,9 @@ export class QuantumFrameGenerator {
 
     const intervals: number[] = [];
     for (let i = 1; i < this.frameHistory.length; i += 1) {
-      const currentSample = this.frameHistory[i]!;
-      const previousSample = this.frameHistory[i - 1]!;
+      const currentSample = this.frameHistory.at(i);
+      const previousSample = this.frameHistory.at(i - 1);
+      if (!currentSample || !previousSample) continue;
       const delta = currentSample.wallClockMs - previousSample.wallClockMs;
       if (delta > 0) intervals.push(1000 / delta);
     }

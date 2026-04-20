@@ -456,9 +456,14 @@ export default function VideoPlayer({
         case "f":
         case "F":
           if (!document.fullscreenElement) {
-            containerRef.current?.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+            containerRef.current
+              ?.requestFullscreen()
+              .then(() => setIsFullscreen(true))
+              .catch((error) => console.warn("Fullscreen request failed", error));
           } else {
-            document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+            document.exitFullscreen().then(() => setIsFullscreen(false)).catch((error) => {
+              console.warn("Fullscreen exit failed", error);
+            });
           }
           break;
         case "m":
@@ -536,9 +541,13 @@ export default function VideoPlayer({
     if (!container) return;
 
     if (!document.fullscreenElement) {
-      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+      container.requestFullscreen().then(() => setIsFullscreen(true)).catch((error) => {
+        console.warn("Fullscreen request failed", error);
+      });
     } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch((error) => {
+        console.warn("Fullscreen exit failed", error);
+      });
     }
   }
 
