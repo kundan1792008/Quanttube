@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlaybackMode, useMedia } from "../context/MediaContext";
 import styles from "./QuantMediaContainer.module.css";
+import PlotSelector, { PlotChoice } from "./PlotSelector";
 
 const QUANTTUBE_CONFIG = {
   apiBaseUrl: process.env.NEXT_PUBLIC_QUANTTUBE_API_BASE_URL ?? "http://localhost:4000",
@@ -172,6 +173,7 @@ export default function QuantMediaContainer() {
           {state.mode === PlaybackMode.Cinema && <CinemaView />}
           {state.mode === PlaybackMode.ShortReel && (
             <ShortReelView
+              apiBaseUrl={apiBaseUrl}
               shareLoading={shareLoading}
               shareError={shareError}
               shareData={shareData}
@@ -208,6 +210,7 @@ function CinemaView() {
 }
 
 interface ShortReelViewProps {
+  apiBaseUrl: string;
   shareLoading: boolean;
   shareError: string | null;
   shareData: ReelShareResponse | null;
@@ -218,6 +221,7 @@ interface ShortReelViewProps {
 }
 
 function ShortReelView({
+  apiBaseUrl,
   shareLoading,
   shareError,
   shareData,
@@ -226,6 +230,65 @@ function ShortReelView({
   onRefreshDashboard,
   onSimulateClick,
 }: ShortReelViewProps) {
+  const [selectedPlotId, setSelectedPlotId] = useState<string | null>(null);
+  const [choices, setChoices] = useState<PlotChoice[]>([]);
+  const narrativeTokenRef = useRef<string | null>(null);
+  const fallbackChoices = useMemo<PlotChoice[]>(
+    () => [
+      {
+        id: "plot-negotiate",
+        label: "Negotiate with the rival pilot before the storm closes in",
+        contextHint: "Higher trust arc, lower immediate risk",
+      },
+      {
+        id: "plot-pursue",
+        label: "Pursue the encrypted beacon through the restricted zone",
+        contextHint: "High-intensity chase with uncertain payoff",
+      },
+      {
+        id: "plot-regroup",
+        label: "Regroup with allies and reroute through the old tunnel",
+        contextHint: "Safer route, possible lost time",
+      },
+    ],
+    []
+  );
+  const effectiveChoices = choices.length > 0 ? choices : fallbackChoices;
+
+  const fetchNarrativeChoices = useCallback(
+    async (signal?: AbortSignal, selectedChoiceId?: string): Promise<void> => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/v1/narrative/next`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal,
+          body: JSON.stringify({
+            userId: "quanttube-short-reel-user",
+            preferences: ["adventure", "mystery"],
+            continuityToken: narrativeTokenRef.current ?? undefined,
+            selectedChoiceId,
+          }),
+        });
+        if (!response.ok) {
+          setChoices(fallbackChoices);
+          return;
+        }
+        const payload = (await response.json()) as NarrativeSegmentResponse;
+        narrativeTokenRef.current = payload.continuityToken;
+        setChoices(
+          payload.choices.map((choice) => ({
+            id: choice.id,
+            label: choice.label,
+            contextHint: `Tone: ${choice.emotionalTone}`,
+          }))
+        );
+      } catch {
+        setChoices(fallbackChoices);
+      }
+    },
+    [apiBaseUrl, fallbackChoices]
+  );
+
   return (
     <div className={styles.reelInner}>
       <div className={styles.videoPlaceholder}>
@@ -298,6 +361,18 @@ function ShortReelView({
             ))}
           </div>
         )}
+        <PlotSelector
+          choices={effectiveChoices}
+          onSelect={(choice) => {
+            setSelectedPlotId(choice.id);
+            void fetchNarrativeChoices(undefined, choice.id);
+          }}
+        />
+        {selectedPlotId && (
+          <p>
+            <strong>Active branch:</strong> {selectedPlotId}
+          </p>
+        )}
       </section>
     </div>
   );
@@ -365,4 +440,13 @@ interface SpectrumBarConfig {
   base: number;
   peak: number;
   duration: number;
+}
+
+interface NarrativeSegmentResponse {
+  continuityToken: string;
+  choices: Array<{
+    id: string;
+    label: string;
+    emotionalTone: "tense" | "hopeful" | "curious";
+  }>;
 }
