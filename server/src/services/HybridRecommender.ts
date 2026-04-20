@@ -213,16 +213,16 @@ export function getTrendingFeed(
  * @param excludeIds Video IDs to exclude (e.g. already watched, in current playlist).
  * @param seedVideoId Optional: video currently being watched (for content-similar seed).
  */
-export function getRecommendations(
+export async function getRecommendations(
   userId: string,
   count = 10,
   excludeIds: string[] = [],
   seedVideoId?: string
-): HybridRecommendation[] {
+): Promise<HybridRecommendation[]> {
   const pool = count * CANDIDATE_POOL_MULTIPLIER;
 
   // --- Content-based candidates ---
-  const seedId = seedVideoId ?? findLastWatchedVideo(userId);
+  const seedId = seedVideoId ?? await findLastWatchedVideo(userId);
   const contentCandidates = seedId
     ? getContentSimilar(seedId, pool, excludeIds)
     : [];
@@ -309,10 +309,11 @@ export function getRecommendations(
 // ---------------------------------------------------------------------------
 
 /** Find the most recently recorded video interaction for a user (as seed for content-based). */
-function findLastWatchedVideo(userId: string): string | undefined {
+async function findLastWatchedVideo(userId: string): Promise<string | undefined> {
   // We re-use CollaborativeRecommender's interaction store
   // Import lazily to avoid circular deps
-  const { getUserInteractions } = require("./CollaborativeRecommender") as typeof import("./CollaborativeRecommender");
+  const CollaborativeRecommenderModule = await import("./CollaborativeRecommender");
+  const { getUserInteractions } = CollaborativeRecommenderModule;
 
   const userInteractions = getUserInteractions(userId);
   if (userInteractions.length === 0) return undefined;
@@ -335,11 +336,13 @@ export type { UserInteraction };
 // Test helper
 // ---------------------------------------------------------------------------
 
-export function _resetHybridRecommender(): void {
+export async function _resetHybridRecommender(): Promise<void> {
   videoMeta.clear();
 
-  const { _resetContentIndex } = require("./ContentRecommender") as typeof import("./ContentRecommender");
-  const { _resetCollaborativeModel } = require("./CollaborativeRecommender") as typeof import("./CollaborativeRecommender");
+  const ContentRecommenderModule = await import("./ContentRecommender");
+  const CollaborativeRecommenderModule = await import("./CollaborativeRecommender");
+  const { _resetContentIndex } = ContentRecommenderModule;
+  const { _resetCollaborativeModel } = CollaborativeRecommenderModule;
 
   _resetContentIndex();
   _resetCollaborativeModel();

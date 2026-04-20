@@ -981,7 +981,7 @@ export default function AccessibilityPlayer({
 
     container.addEventListener("keydown", handleKeyDown);
     return () => container.removeEventListener("keydown", handleKeyDown);
-  }, [showControlsTemporarily]);
+  }, [showControlsTemporarily, toggleFullscreen]);
 
   // ---------------------------------------------------------------------------
   // Control actions
