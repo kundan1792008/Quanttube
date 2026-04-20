@@ -240,9 +240,8 @@ export class QuantumFrameGenerator {
 
     const intervals: number[] = [];
     for (let i = 1; i < this.frameHistory.length; i += 1) {
-      const currentSample = this.frameHistory[i];
-      const previousSample = this.frameHistory[i - 1];
-      if (!currentSample || !previousSample) continue;
+      const currentSample = this.frameHistory[i]!;
+      const previousSample = this.frameHistory[i - 1]!;
       const delta = currentSample.wallClockMs - previousSample.wallClockMs;
       if (delta > 0) intervals.push(1000 / delta);
     }

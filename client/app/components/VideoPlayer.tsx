@@ -433,17 +433,6 @@ export default function VideoPlayer({
     }, 3000);
   }, [isPlaying]);
 
-  const toggleFullscreen = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
-    }
-  }, []);
-
   // ---------------------------------------------------------------------------
   // Keyboard shortcuts
   // ---------------------------------------------------------------------------
@@ -466,7 +455,11 @@ export default function VideoPlayer({
           break;
         case "f":
         case "F":
-          toggleFullscreen();
+          if (!document.fullscreenElement) {
+            containerRef.current?.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+          } else {
+            document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+          }
           break;
         case "m":
         case "M":
@@ -491,7 +484,7 @@ export default function VideoPlayer({
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [toggleFullscreen]);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Control actions
@@ -537,6 +530,17 @@ export default function VideoPlayer({
     if (!video) return;
     video.muted = !video.muted;
   }, []);
+
+  function toggleFullscreen() {
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  }
 
   const togglePip = useCallback(async () => {
     const video = videoRef.current;

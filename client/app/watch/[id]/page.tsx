@@ -95,6 +95,10 @@ function WatchExperience({ id }: { id: string }) {
   useEffect(() => {
     const controller = new AbortController();
 
+    if (safeVideoId !== id) {
+      console.warn("Invalid watch id received; falling back to demo-video", { originalId: id });
+    }
+
     async function loadStreamMetadata() {
       setStreamLoadState("loading");
       setStreamError(null);
@@ -133,7 +137,7 @@ function WatchExperience({ id }: { id: string }) {
 
     void loadStreamMetadata();
     return () => controller.abort();
-  }, [engagementBucket, safeVideoId, state.mode]);
+  }, [engagementBucket, id, safeVideoId, state.mode]);
 
   const playbackHealth = useMemo(() => {
     if (!playerAnalytics) return "Collecting playback telemetry";

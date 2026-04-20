@@ -95,6 +95,14 @@ function streamCacheKey(mediaId: string, mode: string): string {
   return `stream:${encodeURIComponent(mediaId)}:${encodeURIComponent(mode)}`;
 }
 
+function buildQuantumInterpolationResponse(mode: string, engagementScore: number, selectedResolution: string) {
+  return buildQuantumInterpolationPlan({
+    mode: mode as "cinema" | "short-reel" | "audio-only",
+    engagementScore,
+    selectedResolution,
+  });
+}
+
 /**
  * Try to retrieve and parse stream metadata from the cache.
  * Returns `null` on cache miss or if the cached payload is malformed.
@@ -153,11 +161,11 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
       targetSyncOffsetMs: 100,
       protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
     };
-    const quantumInterpolation = buildQuantumInterpolationPlan({
-      mode: resolvedMode,
+    const quantumInterpolation = buildQuantumInterpolationResponse(
+      resolvedMode,
       engagementScore,
-      selectedResolution: tier.resolution,
-    });
+      tier.resolution
+    );
     logger.info(
       { mediaId, userId, engagementScore, mode: resolvedMode, resolution: tier.resolution, cacheHit: true },
       "Stream tier selected (cache hit)"
@@ -195,11 +203,11 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
     targetSyncOffsetMs: 100,
     protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
   };
-  const quantumInterpolation = buildQuantumInterpolationPlan({
-    mode: resolvedMode,
+  const quantumInterpolation = buildQuantumInterpolationResponse(
+    resolvedMode,
     engagementScore,
-    selectedResolution: tier.resolution,
-  });
+    tier.resolution
+  );
 
   res.json({
     mediaId,

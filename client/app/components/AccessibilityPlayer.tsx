@@ -839,16 +839,6 @@ export default function AccessibilityPlayer({
     }, 3000);
   }, [isPlaying]);
 
-  const toggleFullscreen = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
-  }, []);
-
   useEffect(() => {
     return () => {
       if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
@@ -918,7 +908,11 @@ export default function AccessibilityPlayer({
         case "f":
         case "F":
           e.preventDefault();
-          toggleFullscreen();
+          if (!document.fullscreenElement) {
+            containerRef.current?.requestFullscreen().catch(() => {});
+          } else {
+            document.exitFullscreen().catch(() => {});
+          }
           break;
 
         case "c":
@@ -991,7 +985,7 @@ export default function AccessibilityPlayer({
 
     container.addEventListener("keydown", handleKeyDown);
     return () => container.removeEventListener("keydown", handleKeyDown);
-  }, [showControlsTemporarily, toggleFullscreen]);
+  }, [showControlsTemporarily]);
 
   // ---------------------------------------------------------------------------
   // Control actions
@@ -1026,6 +1020,16 @@ export default function AccessibilityPlayer({
     if (!v) return;
     v.currentTime = Number(e.target.value);
   }, []);
+
+  function toggleFullscreen() {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
 
   const handleCaptionStyleChange = useCallback((updates: Partial<CaptionStyleConfig>) => {
     setCaptionStyle((prev) => ({ ...prev, ...updates }));

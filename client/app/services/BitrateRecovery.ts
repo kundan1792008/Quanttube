@@ -139,9 +139,11 @@ export class QuantumBitrateRecovery {
 
   private pruneSamples(now: number): void {
     const cutoff = now - 15_000;
-    while (this.samples.length > 0 && this.samples[0]!.atMs < cutoff) {
-      this.samples.shift();
+    let cutoffIndex = 0;
+    while (cutoffIndex < this.samples.length && this.samples[cutoffIndex]!.atMs < cutoff) {
+      cutoffIndex += 1;
     }
+    if (cutoffIndex > 0) this.samples.splice(0, cutoffIndex);
     if (this.samples.length > 30) {
       this.samples.splice(0, this.samples.length - 30);
     }
