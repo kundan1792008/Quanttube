@@ -8,6 +8,7 @@ import styles from "./QuantMediaContainer.module.css";
 
 const QUANTTUBE_CONFIG = {
   apiBaseUrl: process.env.NEXT_PUBLIC_QUANTTUBE_API_BASE_URL ?? "http://localhost:4000",
+  cdnBaseUrl: process.env.NEXT_PUBLIC_QUANTTUBE_CDN_BASE_URL ?? "https://cdn.quanttube.app",
   groupId: process.env.NEXT_PUBLIC_QUANTCHAT_GROUP_ID ?? "group-alpha",
   sharedBy: process.env.NEXT_PUBLIC_QUANTCHAT_MEMBER_ID ?? "member-owner",
   memberIds: (process.env.NEXT_PUBLIC_QUANTCHAT_MEMBER_IDS ?? "member-a,member-b,member-c")
@@ -199,27 +200,27 @@ export default function QuantMediaContainer() {
 }
 
 function activeSourceByMode(mode: PlaybackMode): string {
-  if (mode === PlaybackMode.ShortReel) return "https://cdn.quanttube.app/reels/current.mp4";
-  if (mode === PlaybackMode.AudioOnly) return "https://cdn.quanttube.app/audio/current.m4a";
-  return "https://cdn.quanttube.app/cinema/current.m3u8";
+  if (mode === PlaybackMode.ShortReel) return `${QUANTTUBE_CONFIG.cdnBaseUrl}/reels/current.mp4`;
+  if (mode === PlaybackMode.AudioOnly) return `${QUANTTUBE_CONFIG.cdnBaseUrl}/audio/current.m4a`;
+  return `${QUANTTUBE_CONFIG.cdnBaseUrl}/cinema/current.m3u8`;
 }
 
 function upcomingSourcesByMode(mode: PlaybackMode): string[] {
   if (mode === PlaybackMode.ShortReel) {
     return [
-      "https://cdn.quanttube.app/reels/next-1.mp4",
-      "https://cdn.quanttube.app/reels/next-2.mp4",
+      `${QUANTTUBE_CONFIG.cdnBaseUrl}/reels/next-1.mp4`,
+      `${QUANTTUBE_CONFIG.cdnBaseUrl}/reels/next-2.mp4`,
     ];
   }
   if (mode === PlaybackMode.AudioOnly) {
     return [
-      "https://cdn.quanttube.app/audio/next-1.m4a",
-      "https://cdn.quanttube.app/audio/next-2.m4a",
+      `${QUANTTUBE_CONFIG.cdnBaseUrl}/audio/next-1.m4a`,
+      `${QUANTTUBE_CONFIG.cdnBaseUrl}/audio/next-2.m4a`,
     ];
   }
   return [
-    "https://cdn.quanttube.app/cinema/next-1.m3u8",
-    "https://cdn.quanttube.app/cinema/next-2.m3u8",
+    `${QUANTTUBE_CONFIG.cdnBaseUrl}/cinema/next-1.m3u8`,
+    `${QUANTTUBE_CONFIG.cdnBaseUrl}/cinema/next-2.m3u8`,
   ];
 }
 
