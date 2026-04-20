@@ -85,6 +85,10 @@ function WatchExperience({ id }: { id: string }) {
   const [streamTier, setStreamTier] = useState("demo");
   const [quantumProfile, setQuantumProfile] = useState<QuantumInterpolationProfile>(DEFAULT_QUANTUM_PROFILE);
   const lastVisualStreamRef = React.useRef(FALLBACK_VIDEO_URL);
+  const safeVideoId = useMemo(
+    () => (/^[a-zA-Z0-9_-]+$/.test(id) ? id : "demo-video"),
+    [id]
+  );
   const engagementScore = useMemo(() => deriveEngagementScore(playerAnalytics), [playerAnalytics]);
   const engagementBucket = useMemo(() => Number((Math.round(engagementScore * 10) / 10).toFixed(1)), [engagementScore]);
 
@@ -97,7 +101,7 @@ function WatchExperience({ id }: { id: string }) {
 
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/v1/stream/${encodeURIComponent(id)}?engagementScore=${engagementBucket}&mode=${encodeURIComponent(state.mode)}`,
+          `${API_BASE_URL}/api/v1/stream/${encodeURIComponent(safeVideoId)}?engagementScore=${engagementBucket}&mode=${encodeURIComponent(state.mode)}`,
           { signal: controller.signal }
         );
         if (!response.ok) throw new Error(`Stream metadata request failed with ${response.status}`);
@@ -129,7 +133,7 @@ function WatchExperience({ id }: { id: string }) {
 
     void loadStreamMetadata();
     return () => controller.abort();
-  }, [engagementBucket, id, state.mode]);
+  }, [engagementBucket, safeVideoId, state.mode]);
 
   const playbackHealth = useMemo(() => {
     if (!playerAnalytics) return "Collecting playback telemetry";
@@ -313,7 +317,7 @@ function WatchExperience({ id }: { id: string }) {
 
           {/* Sidebar – Smart Transcript */}
           <div className="lg:col-span-1">
-            <SmartTranscript videoId={id} />
+            <SmartTranscript videoId={safeVideoId} />
           </div>
         </div>
 
@@ -325,7 +329,7 @@ function WatchExperience({ id }: { id: string }) {
               Sync playback and chat with friends in real-time via WebSocket.
             </p>
           </div>
-          <SocialWatchParty partyId={`party-${id}`} userId="viewer-local" />
+          <SocialWatchParty partyId={`party-${safeVideoId}`} userId="viewer-local" />
         </section>
 
         <section className="mt-10 space-y-4">

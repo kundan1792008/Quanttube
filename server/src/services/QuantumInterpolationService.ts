@@ -73,7 +73,7 @@ export function buildQuantumInterpolationPlan(
       : input.selectedResolution === "1080p"
         ? 128
         : 96;
-  const recoveryWindow = Number((5 + headroom * 5).toFixed(1));
+  const recoveryWindow = Math.round((5 + headroom * 5) * 10) / 10;
 
   return {
     enabled: true,

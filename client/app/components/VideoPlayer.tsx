@@ -628,7 +628,7 @@ export default function VideoPlayer({
     return "Interpolation stable";
   }, [quantumTelemetry, recoveryTelemetry]);
 
-  const displaySourceFrameRate = useMemo(
+  const displaySourceFrameRate = useMemo<string>(
     () => (quantumTelemetry?.measuredSourceFrameRate ?? resolvedQuantumProfile.sourceFrameRate).toFixed(1),
     [quantumTelemetry, resolvedQuantumProfile.sourceFrameRate]
   );

@@ -95,7 +95,7 @@ export class QuantumBitrateRecovery {
       plan = {
         state: "recovering",
         targetBitrateKbps: Math.max(MIN_BITRATE_KBPS, Math.round(currentBitrateKbps * 0.45)),
-        syntheticCoverageSeconds: Number(syntheticCoverageSeconds.toFixed(1)),
+        syntheticCoverageSeconds: Math.round(syntheticCoverageSeconds * 10) / 10,
         preserveAudio: true,
         reason:
           this.profile.preferredRenderer === "audio-only"
@@ -106,10 +106,10 @@ export class QuantumBitrateRecovery {
       plan = {
         state: "protecting",
         targetBitrateKbps: Math.max(128, Math.round(currentBitrateKbps * 0.7)),
-        syntheticCoverageSeconds: Number(
-          clamp(bufferFloor - input.bufferedAheadSeconds, 0, this.profile.recovery.maxSyntheticSeconds)
-            .toFixed(1)
-        ),
+        syntheticCoverageSeconds:
+          Math.round(
+            clamp(bufferFloor - input.bufferedAheadSeconds, 0, this.profile.recovery.maxSyntheticSeconds) * 10
+          ) / 10,
         preserveAudio: true,
         reason: "Pre-emptively lowering bitrate to protect playback continuity",
       };

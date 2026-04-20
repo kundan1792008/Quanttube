@@ -240,7 +240,10 @@ export class QuantumFrameGenerator {
 
     const intervals: number[] = [];
     for (let i = 1; i < this.frameHistory.length; i += 1) {
-      const delta = this.frameHistory[i]!.wallClockMs - this.frameHistory[i - 1]!.wallClockMs;
+      const currentSample = this.frameHistory[i];
+      const previousSample = this.frameHistory[i - 1];
+      if (!currentSample || !previousSample) continue;
+      const delta = currentSample.wallClockMs - previousSample.wallClockMs;
       if (delta > 0) intervals.push(1000 / delta);
     }
 
@@ -251,7 +254,8 @@ export class QuantumFrameGenerator {
 
   private estimateMemoryMb(): number {
     if (this.frameHistory.length === 0) return 0;
-    const latest = this.frameHistory[this.frameHistory.length - 1]!;
+    const latest = this.frameHistory[this.frameHistory.length - 1];
+    if (!latest) return 0;
     const bytesPerFrame = latest.width * latest.height * 4;
     const totalBytes = bytesPerFrame * this.frameHistory.length;
     return Number((totalBytes / (1024 * 1024)).toFixed(1));
