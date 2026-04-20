@@ -64,11 +64,8 @@ import {
 
 import {
   tokenize,
-  computeTfIdf,
   getDurationBucket,
   cosineSimilarity,
-  dotProduct,
-  magnitude,
   indexVideo,
   getContentSimilar,
   getIndexSize,

@@ -356,7 +356,11 @@ export default function VideoPlayer({
         case " ":
         case "k":
           e.preventDefault();
-          video.paused ? video.play() : video.pause();
+          if (video.paused) {
+            void video.play();
+          } else {
+            video.pause();
+          }
           break;
         case "f":
         case "F":
@@ -385,7 +389,7 @@ export default function VideoPlayer({
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [toggleFullscreen]);
 
   // ---------------------------------------------------------------------------
   // Control actions
@@ -394,7 +398,11 @@ export default function VideoPlayer({
   const togglePlayPause = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.paused ? video.play() : video.pause();
+    if (video.paused) {
+      void video.play();
+    } else {
+      video.pause();
+    }
   }, []);
 
   const seek = useCallback((time: number) => {

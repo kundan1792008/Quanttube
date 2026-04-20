@@ -1080,7 +1080,7 @@ playlistsRouter.delete("/:id/items/:videoId", (req: Request, res: Response) => {
 
 export const recommendationsRouter = Router();
 
-recommendationsRouter.get("/:userId", (req: Request, res: Response) => {
+recommendationsRouter.get("/:userId", async (req: Request, res: Response) => {
   const { userId } = req.params;
   if (!userId) {
     res.status(400).json({ error: "userId is required" });
@@ -1095,7 +1095,7 @@ recommendationsRouter.get("/:userId", (req: Request, res: Response) => {
 
   const { count, excludeIds, seedVideoId } = queryParse.data;
 
-  const recommendations = getRecommendations(userId, count, excludeIds, seedVideoId);
+  const recommendations = await getRecommendations(userId, count, excludeIds, seedVideoId);
 
   logger.info({ userId, count: recommendations.length }, "Recommendations served");
 
