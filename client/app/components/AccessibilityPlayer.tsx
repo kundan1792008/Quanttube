@@ -846,6 +846,20 @@ export default function AccessibilityPlayer({
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Control actions (defined before keyboard navigation to avoid hoisting issues)
+  // ---------------------------------------------------------------------------
+
+  const toggleFullscreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Keyboard navigation
   // ---------------------------------------------------------------------------
 
@@ -1015,16 +1029,6 @@ export default function AccessibilityPlayer({
     const v = videoRef.current;
     if (!v) return;
     v.currentTime = Number(e.target.value);
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
   }, []);
 
   const handleCaptionStyleChange = useCallback((updates: Partial<CaptionStyleConfig>) => {

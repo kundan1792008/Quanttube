@@ -343,6 +343,21 @@ export default function VideoPlayer({
   }, [isPlaying]);
 
   // ---------------------------------------------------------------------------
+  // Control actions (defined before keyboard shortcuts to avoid hoisting issues)
+  // ---------------------------------------------------------------------------
+
+  const toggleFullscreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Keyboard shortcuts
   // ---------------------------------------------------------------------------
 
@@ -434,17 +449,6 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
     video.muted = !video.muted;
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
-    }
   }, []);
 
   const togglePip = useCallback(async () => {
