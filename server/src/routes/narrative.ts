@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import {
   NARRATIVE_PREFERENCES,
   generateNarrativeSegment,
@@ -41,10 +41,20 @@ const AvatarSynthSchema = z.object({
   lightingPreset: LightingPresetSchema.default("neutral"),
 });
 
+function sendValidationError(res: Response, error: ZodError): void {
+  res.status(400).json({
+    error: error.issues[0]?.message ?? "Invalid request",
+    issues: error.issues.map((issue) => ({
+      path: issue.path.join("."),
+      message: issue.message,
+    })),
+  });
+}
+
 router.post("/next", (req: Request, res: Response) => {
   const parse = NextSegmentBodySchema.safeParse(req.body);
   if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
+    sendValidationError(res, parse.error);
     return;
   }
   const segment = generateNarrativeSegment(parse.data);
@@ -54,7 +64,7 @@ router.post("/next", (req: Request, res: Response) => {
 router.post("/deep-dubbing-simulation", (req: Request, res: Response) => {
   const parse = DubbingSimulationSchema.safeParse(req.body);
   if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
+    sendValidationError(res, parse.error);
     return;
   }
   const job = enqueueDeepDubbingSimulation(parse.data);
@@ -73,7 +83,7 @@ router.get("/deep-dubbing-simulation/:jobId", (req: Request, res: Response) => {
 router.post("/avatar-synth/jobs", (req: Request, res: Response) => {
   const parse = AvatarSynthSchema.safeParse(req.body);
   if (!parse.success) {
-    res.status(400).json({ error: parse.error.issues[0]?.message });
+    sendValidationError(res, parse.error);
     return;
   }
   const dedupedFrameIds = Array.from(new Set(parse.data.frameIds));

@@ -84,13 +84,39 @@ function buildChoices(
   preference: NarrativePreference
 ): NarrativeChoice[] {
   const seed = fnv1aHash(`${userId}:${segmentNumber}:${preference}`);
-  const variants = [
-    "Trust your ally and take the risky shortcut",
-    "Investigate the hidden signal before advancing",
-    "Confront the rival now to seize momentum",
-    "Secure the team first before entering unknown territory",
-    "Transmit a coded message and wait for a response",
-  ];
+  const variantsByPreference: Record<NarrativePreference, string[]> = {
+    action: [
+      "Dash across the collapsing bridge before the blast wave lands",
+      "Disarm the drone swarm while your team evacuates the core chamber",
+      "Intercept the armored convoy before it reaches the capital gate",
+    ],
+    romance: [
+      "Reveal your hidden message before the midnight train departs",
+      "Accept the dance invitation that could rewrite your alliance",
+      "Protect your partner's secret even if it costs your command",
+    ],
+    mystery: [
+      "Trace the cipher hidden in the archive's missing page",
+      "Question the witness whose timeline no longer adds up",
+      "Follow the impossible footprint into the sealed observatory",
+    ],
+    adventure: [
+      "Navigate the storm canyon using only the ancient star map",
+      "Trade supplies with the outpost leader for a mountain shortcut",
+      "Cross the ice ridge before the expedition window closes",
+    ],
+    "sci-fi": [
+      "Link your neural key to the dormant orbital lattice",
+      "Test the prototype jump drive despite unstable coordinates",
+      "Enter the simulation shard to recover a lost consciousness",
+    ],
+    drama: [
+      "Publicly defend your rival to prevent a political collapse",
+      "Tell your family the truth before the tribunal hearing begins",
+      "Break the silence and expose the deal that saved the company",
+    ],
+  };
+  const variants = variantsByPreference[preference];
   return Array.from({ length: 3 }, (_, i) => {
     const label = variants[(seed + i) % variants.length];
     const emotionalTone: NarrativeChoice["emotionalTone"] =
@@ -121,8 +147,9 @@ export function generateNarrativeSegment(input: GenerateNarrativeInput): Narrati
     selectedChoiceNote,
     "Maintain continuity with prior events and end on a meaningful choice point.",
   ].join(" ");
+  const continuityHashSeed = `${input.userId}:${input.continuityToken ?? "new"}:${input.selectedChoiceId ?? "none"}`;
   const continuityToken = `${narrativeId}:${nextSegmentNumber}:${fnv1aHash(
-    `${input.userId}:${input.continuityToken ?? "new"}:${input.selectedChoiceId ?? "none"}`
+    continuityHashSeed
   ).toString(16)}`;
 
   narrativeStateStore.set(key, { narrativeId, segmentNumber: nextSegmentNumber });

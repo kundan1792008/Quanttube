@@ -32,7 +32,7 @@ export default function PlotSelector({ choices, onSelect }: PlotSelectorProps) {
     onSelect?.(choices[boundedIndex]);
   }
 
-  function handleDragEnd(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo): void {
+  function handleDragEnd(_dragEvent: MouseEvent | TouchEvent | PointerEvent, info: PanInfo): void {
     if (info.offset.x <= -SWIPE_THRESHOLD_PX) {
       setChoice(activeIndex + 1);
       return;
