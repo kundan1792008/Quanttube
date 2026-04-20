@@ -124,6 +124,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function getNetworkConnection(): NetworkInformationLike | undefined {
+  if (typeof navigator === "undefined") return undefined;
+  return (navigator as Navigator & { connection?: NetworkInformationLike }).connection;
+}
+
 // ---------------------------------------------------------------------------
 // VideoPlayer component
 // ---------------------------------------------------------------------------
@@ -333,10 +338,7 @@ export default function VideoPlayer({
 
     const currentLevel =
       currentQuality >= 0 ? qualityLevels.find((level) => level.index === currentQuality) : qualityLevels[0];
-    const connection =
-      typeof navigator !== "undefined"
-        ? ((navigator as Navigator & { connection?: NetworkInformationLike }).connection ?? undefined)
-        : undefined;
+    const connection = getNetworkConnection();
 
     bitrateRecoveryRef.current?.update({
       bufferedAheadSeconds: getBufferedAhead(video),

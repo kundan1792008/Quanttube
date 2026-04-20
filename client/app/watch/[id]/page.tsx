@@ -8,7 +8,7 @@ import PremiumPaywall from "../../components/PremiumPaywall";
 import QuantMediaContainer from "../../components/QuantMediaContainer";
 import SocialWatchParty from "../../components/SocialWatchParty";
 import VideoPlayer, { type PlayerAnalytics } from "../../components/VideoPlayer";
-import { MediaProvider } from "../../context/MediaContext";
+import { MediaProvider, PlaybackMode, useMedia } from "../../context/MediaContext";
 import type { QuantumInterpolationProfile } from "../../services/FrameGenerator";
 
 const LANGUAGES = [
@@ -50,6 +50,15 @@ interface StreamMetadataResponse {
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  return (
+    <MediaProvider>
+      <WatchExperience id={id} />
+    </MediaProvider>
+  );
+}
+
+function WatchExperience({ id }: { id: string }) {
+  const { state } = useMedia();
   const [selectedLang, setSelectedLang] = useState("English");
   const [dubbingState, setDubbingState] = useState<DubbingState>("idle");
   const [showPaywall, setShowPaywall] = useState(false);
@@ -60,6 +69,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
   const [streamSource, setStreamSource] = useState(FALLBACK_VIDEO_URL);
   const [streamTier, setStreamTier] = useState("demo");
   const [quantumProfile, setQuantumProfile] = useState<QuantumInterpolationProfile>(DEFAULT_QUANTUM_PROFILE);
+  const lastVisualStreamRef = React.useRef(FALLBACK_VIDEO_URL);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,28 +80,39 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
 
       try {
         const response = await fetch(
-          `${API_BASE_URL}/api/v1/stream/${encodeURIComponent(id)}?engagementScore=0.85&mode=cinema`,
+          `${API_BASE_URL}/api/v1/stream/${encodeURIComponent(id)}?engagementScore=0.85&mode=${encodeURIComponent(state.mode)}`,
           { signal: controller.signal }
         );
         if (!response.ok) throw new Error(`Stream metadata request failed with ${response.status}`);
         const payload = (await response.json()) as StreamMetadataResponse;
-        setStreamSource(payload.hlsManifestUrl || FALLBACK_VIDEO_URL);
+        const nextVisualSource = payload.hlsManifestUrl || FALLBACK_VIDEO_URL;
+        if (state.mode !== PlaybackMode.AudioOnly) {
+          lastVisualStreamRef.current = nextVisualSource;
+        }
+        setStreamSource(
+          state.mode === PlaybackMode.AudioOnly ? lastVisualStreamRef.current : nextVisualSource
+        );
         setStreamTier(payload.selectedTier.resolution);
         setQuantumProfile(payload.quantumInterpolation ?? DEFAULT_QUANTUM_PROFILE);
         setStreamLoadState("ready");
-      } catch {
+      } catch (error) {
         if (controller.signal.aborted) return;
-        setStreamSource(FALLBACK_VIDEO_URL);
-        setStreamTier("demo");
+        console.error("Failed to load stream metadata", error);
+        setStreamSource(lastVisualStreamRef.current || FALLBACK_VIDEO_URL);
+        setStreamTier(state.mode === PlaybackMode.AudioOnly ? "audio" : "demo");
         setQuantumProfile(DEFAULT_QUANTUM_PROFILE);
         setStreamLoadState("fallback");
-        setStreamError(`Live stream metadata unavailable at ${API_BASE_URL}; demo playback enabled.`);
+        setStreamError(
+          `Live stream metadata unavailable at ${API_BASE_URL}; demo playback enabled.${
+            error instanceof Error ? ` ${error.message}` : ""
+          }`
+        );
       }
     }
 
     void loadStreamMetadata();
     return () => controller.abort();
-  }, [id]);
+  }, [id, state.mode]);
 
   const playbackHealth = useMemo(() => {
     if (!playerAnalytics) return "Collecting playback telemetry";
@@ -204,6 +225,9 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                   <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">
                     {streamLoadState === "ready" ? "Live quantum stream" : "Fallback quantum demo"}
                   </span>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white/70">
+                    Mode: {state.mode}
+                  </span>
                   <span className="text-sm text-white/50">{playbackHealth}</span>
                   {streamError && <span className="text-sm text-amber-300">{streamError}</span>}
                   {playerAnalytics && (
@@ -291,9 +315,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
               Switch this session between cinema, short-reel, and audio-only layouts.
             </p>
           </div>
-          <MediaProvider>
-            <QuantMediaContainer />
-          </MediaProvider>
+          <QuantMediaContainer />
         </section>
       </div>
 

@@ -62,6 +62,14 @@ function hasWebGpuSupport(): boolean {
   return "gpu" in navigator;
 }
 
+function canCancelVideoFrameCallback(
+  video: HTMLVideoElementWithFrameCallback
+): video is HTMLVideoElementWithFrameCallback & {
+  cancelVideoFrameCallback: (handle: number) => void;
+} {
+  return typeof video.cancelVideoFrameCallback === "function";
+}
+
 export class QuantumFrameGenerator {
   private video: HTMLVideoElementWithFrameCallback | null = null;
   private profile: QuantumInterpolationProfile;
@@ -127,7 +135,7 @@ export class QuantumFrameGenerator {
     if (
       this.video &&
       this.videoFrameCallbackHandle !== null &&
-      typeof this.video.cancelVideoFrameCallback === "function"
+      canCancelVideoFrameCallback(this.video)
     ) {
       this.video.cancelVideoFrameCallback(this.videoFrameCallbackHandle);
       this.videoFrameCallbackHandle = null;

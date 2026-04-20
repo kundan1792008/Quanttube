@@ -32,6 +32,8 @@ interface RecoverySample {
 
 type RecoveryListener = (telemetry: RecoveryTelemetry) => void;
 
+const MIN_BITRATE_KBPS = 96;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -75,7 +77,7 @@ export class QuantumBitrateRecovery {
     this.pruneSamples(now);
 
     const recentStallCount = this.samples.filter((sample) => sample.buffering).length;
-    const currentBitrateKbps = Math.max(96, input.currentBitrateKbps || 96);
+    const currentBitrateKbps = Math.max(MIN_BITRATE_KBPS, input.currentBitrateKbps || MIN_BITRATE_KBPS);
     const bufferFloor = this.profile.recovery.minBufferedSeconds;
     const hasHardDrop =
       input.buffering && input.bufferedAheadSeconds <= bufferFloor * 0.35;
@@ -92,7 +94,7 @@ export class QuantumBitrateRecovery {
       );
       plan = {
         state: "recovering",
-        targetBitrateKbps: Math.max(96, Math.round(currentBitrateKbps * 0.45)),
+        targetBitrateKbps: Math.max(MIN_BITRATE_KBPS, Math.round(currentBitrateKbps * 0.45)),
         syntheticCoverageSeconds: Number(syntheticCoverageSeconds.toFixed(1)),
         preserveAudio: true,
         reason:
