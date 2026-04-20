@@ -755,7 +755,7 @@ describe("HybridRecommender – applyDiversityPenalty", () => {
 });
 
 describe("HybridRecommender – getRecommendations", () => {
-  it("returns an array (even for cold-start user)", () => {
+  it("returns an array (even for cold-start user)", async () => {
     registerVideo(
       { videoId: "v1", category: "education", viewCount: 5000, publishedAt: new Date().toISOString() },
       { videoId: "v1", title: "Machine Learning", description: "ML tutorial", tags: ["ml"], category: "education", durationSecs: 600, viewCount: 5000 }
@@ -765,17 +765,17 @@ describe("HybridRecommender – getRecommendations", () => {
       { videoId: "v2", title: "Deep Learning", description: "DL tutorial", tags: ["dl"], category: "education", durationSecs: 700, viewCount: 3000 }
     );
 
-    const recs = getRecommendations("new-user", 5);
+    const recs = await getRecommendations("new-user", 5);
     expect(Array.isArray(recs)).toBe(true);
   });
 
-  it("respects excludeIds", () => {
+  it("respects excludeIds", async () => {
     registerVideo(
       { videoId: "va", category: "sports", viewCount: 1000, publishedAt: new Date().toISOString() },
       { videoId: "va", title: "Soccer Highlights", description: "Goals and saves", tags: ["soccer"], category: "sports", durationSecs: 300, viewCount: 1000 }
     );
 
-    const recs = getRecommendations("user-x", 5, ["va"]);
+    const recs = await getRecommendations("user-x", 5, ["va"]);
     const ids = recs.map((r) => r.videoId);
     expect(ids).not.toContain("va");
   });
