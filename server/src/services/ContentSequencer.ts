@@ -99,6 +99,7 @@ function buildArcTargets(length: number): EmotionalVector[] {
   const targets: EmotionalVector[] = [];
 
   for (let i = 0; i < safeLength; i += 1) {
+    // Guard single-item sequences so we never divide by zero in arc progress.
     const progress = safeLength === 1 ? 1 : i / (safeLength - 1);
     const intensityCurve = progress <= 0.6 ? progress / 0.6 : (1 - progress) / 0.4;
     const energy = clamp01(0.35 + intensityCurve * 0.5);
@@ -167,7 +168,7 @@ export function buildPredictiveSequence(
       }
     }
 
-    const [picked] = available.splice(bestIndex, 1);
+    const picked = available.splice(bestIndex, 1)[0];
     selected.push({
       ...picked.item,
       vector: picked.vector,

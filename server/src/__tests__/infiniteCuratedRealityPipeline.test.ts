@@ -43,10 +43,10 @@ describe("ContentSequencer", () => {
 
 describe("SessionDepth", () => {
   it("tracks depth and upgrades tiers with sustained watch behavior", () => {
-    const state = createSessionDepthState("session-1", "2026-01-01T00:00:00.000Z");
+    let state = createSessionDepthState("session-1", "2026-01-01T00:00:00.000Z");
 
-    applySessionDepthEvent(state, { watchedSeconds: 900, completedItem: true }, "2026-01-01T00:15:00.000Z");
-    applySessionDepthEvent(state, { watchedSeconds: 600, completedItem: true }, "2026-01-01T00:25:00.000Z");
+    state = applySessionDepthEvent(state, { watchedSeconds: 900, completedItem: true }, "2026-01-01T00:15:00.000Z");
+    state = applySessionDepthEvent(state, { watchedSeconds: 600, completedItem: true }, "2026-01-01T00:25:00.000Z");
 
     expect(state.watchSeconds).toBe(1500);
     expect(state.completedItems).toBe(2);
@@ -54,11 +54,11 @@ describe("SessionDepth", () => {
   });
 
   it("reduces depth momentum on skips and exposes recommendation signal", () => {
-    const state = createSessionDepthState("session-2", "2026-01-01T00:00:00.000Z");
+    let state = createSessionDepthState("session-2", "2026-01-01T00:00:00.000Z");
 
-    applySessionDepthEvent(state, { watchedSeconds: 1200, completedItem: true });
+    state = applySessionDepthEvent(state, { watchedSeconds: 1200, completedItem: true });
     const beforeSkip = state.depthPoints;
-    applySessionDepthEvent(state, { watchedSeconds: 10, skippedItem: true });
+    state = applySessionDepthEvent(state, { watchedSeconds: 10, skippedItem: true });
 
     const signal = buildSessionDepthRecommendationSignal(state);
 

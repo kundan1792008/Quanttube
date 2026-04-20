@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { PlaybackMode } from "../context/MediaContext";
 
@@ -39,6 +39,7 @@ export default function TransitionEngine({
   children,
 }: TransitionEngineProps) {
   const [preloaded, setPreloaded] = useState<PreloadedAsset[]>([]);
+  const preloadElementsRef = useRef<Array<HTMLAudioElement | HTMLVideoElement>>([]);
 
   const queue = useMemo(() => upcomingSources.slice(0, Math.max(0, preloadCount)), [upcomingSources, preloadCount]);
 
@@ -52,12 +53,14 @@ export default function TransitionEngine({
         const el = new Audio();
         el.preload = "auto";
         el.src = src;
+        preloadElementsRef.current.push(el);
       } else {
         const video = document.createElement("video");
         video.preload = "auto";
         video.src = src;
         video.muted = true;
         video.playsInline = true;
+        preloadElementsRef.current.push(video);
       }
       loaded.push({ src, kind });
     }
@@ -71,6 +74,11 @@ export default function TransitionEngine({
 
     return () => {
       cancelled = true;
+      for (const mediaElement of preloadElementsRef.current) {
+        mediaElement.removeAttribute("src");
+        mediaElement.load();
+      }
+      preloadElementsRef.current = [];
     };
   }, [queue]);
 

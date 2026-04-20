@@ -173,7 +173,7 @@ export default function QuantMediaContainer() {
         >
           <TransitionEngine
             mode={state.mode}
-            activeSource={activeSourceByMode(state.mode)}
+            activeSource={activeSourceByMode(state.mode, state.streamUrl)}
             upcomingSources={upcomingSourcesByMode(state.mode)}
             bridgeHint={transitionHintByMode(state.mode)}
           >
@@ -199,10 +199,10 @@ export default function QuantMediaContainer() {
   );
 }
 
-function activeSourceByMode(mode: PlaybackMode): string {
+function activeSourceByMode(mode: PlaybackMode, streamUrl: string | null): string {
   if (mode === PlaybackMode.ShortReel) return `${QUANTTUBE_CONFIG.cdnBaseUrl}/reels/current.mp4`;
   if (mode === PlaybackMode.AudioOnly) return `${QUANTTUBE_CONFIG.cdnBaseUrl}/audio/current.m4a`;
-  return `${QUANTTUBE_CONFIG.cdnBaseUrl}/cinema/current.m3u8`;
+  return streamUrl ?? `${QUANTTUBE_CONFIG.cdnBaseUrl}/cinema/current.m3u8`;
 }
 
 function upcomingSourcesByMode(mode: PlaybackMode): string[] {

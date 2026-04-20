@@ -42,11 +42,12 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export function createSessionDepthState(sessionId: string, startedAt = nowIso()): SessionDepthState {
+export function createSessionDepthState(sessionId: string, startedAt?: string): SessionDepthState {
+  const timestamp = startedAt ?? nowIso();
   return {
     sessionId,
-    startedAt,
-    lastEventAt: startedAt,
+    startedAt: timestamp,
+    lastEventAt: timestamp,
     depthPoints: 0,
     watchSeconds: 0,
     completedItems: 0,
@@ -58,8 +59,9 @@ export function createSessionDepthState(sessionId: string, startedAt = nowIso())
 export function applySessionDepthEvent(
   state: SessionDepthState,
   event: SessionDepthEvent,
-  timestamp = nowIso()
+  timestamp?: string
 ): SessionDepthState {
+  const eventTimestamp = timestamp ?? nowIso();
   const safeWatchSeconds = Number.isFinite(event.watchedSeconds)
     ? Math.max(0, Math.floor(event.watchedSeconds))
     : 0;
@@ -68,14 +70,16 @@ export function applySessionDepthEvent(
   const skipPenalty = event.skippedItem ? 6 : 0;
   const watchPoints = Math.min(15, Math.floor(safeWatchSeconds / 30) * 2);
 
-  state.watchSeconds += safeWatchSeconds;
-  state.completedItems += event.completedItem ? 1 : 0;
-  state.skips += event.skippedItem ? 1 : 0;
-  state.depthPoints = Math.max(0, state.depthPoints + watchPoints + completionBonus - skipPenalty);
-  state.tier = resolveTier(state.depthPoints);
-  state.lastEventAt = timestamp;
-
-  return state;
+  const nextDepthPoints = Math.max(0, state.depthPoints + watchPoints + completionBonus - skipPenalty);
+  return {
+    ...state,
+    watchSeconds: state.watchSeconds + safeWatchSeconds,
+    completedItems: state.completedItems + (event.completedItem ? 1 : 0),
+    skips: state.skips + (event.skippedItem ? 1 : 0),
+    depthPoints: nextDepthPoints,
+    tier: resolveTier(nextDepthPoints),
+    lastEventAt: eventTimestamp,
+  };
 }
 
 export function buildSessionDepthRecommendationSignal(
