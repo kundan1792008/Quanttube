@@ -35,6 +35,9 @@ describe("GET /api/v1/stream/:mediaId", () => {
     expect(res.body.dashManifestUrl).toContain("manifest.mpd");
     expect(res.body.syncMetadata).toBeDefined();
     expect(res.body.syncMetadata.targetSyncOffsetMs).toBe(100);
+    expect(res.body.quantumInterpolation.enabled).toBe(true);
+    expect(res.body.quantumInterpolation.targetFrameRate).toBe(120);
+    expect(res.body.quantumInterpolation.recovery.maxSyntheticSeconds).toBeGreaterThanOrEqual(5);
   });
 
   it("selects 4K tier for engagement score 0.9", async () => {
@@ -52,6 +55,18 @@ describe("GET /api/v1/stream/:mediaId", () => {
     expect(res.status).toBe(200);
     expect(res.body.selectedTier.resolution).toBe("audio");
     expect(res.body.syncMetadata.protocol).toBe("hls-audio-only");
+    expect(res.body.quantumInterpolation.enabled).toBe(false);
+    expect(res.body.quantumInterpolation.recovery.strategy).toBe("audio-priority-continuity");
+  });
+
+  it("uses a lower interpolation target for short-reel mode", async () => {
+    const res = await request(app)
+      .get("/api/v1/stream/reel-001")
+      .query({ mode: "short-reel", engagementScore: "0.7" });
+    expect(res.status).toBe(200);
+    expect(res.body.quantumInterpolation.enabled).toBe(true);
+    expect(res.body.quantumInterpolation.targetFrameRate).toBe(90);
+    expect(res.body.quantumInterpolation.frameHistorySize).toBe(8);
   });
 
   it("rejects invalid engagementScore", async () => {

@@ -46,6 +46,14 @@ export type {
   UpdatePreferencesPatch,
 } from "./wellbeing";
 
+export {
+  buildQuantumInterpolationPlan,
+} from "./QuantumInterpolationService";
+export type {
+  QuantumInterpolationPlan,
+  QuantumRecoveryPolicy,
+} from "./QuantumInterpolationService";
+
 // ---------------------------------------------------------------------------
 // Upload & Transcode pipeline
 // ---------------------------------------------------------------------------

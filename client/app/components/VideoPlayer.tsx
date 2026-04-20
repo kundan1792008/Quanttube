@@ -20,6 +20,15 @@ import React, {
   useMemo,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  QuantumBitrateRecovery,
+  type RecoveryTelemetry,
+} from "../services/BitrateRecovery";
+import {
+  QuantumFrameGenerator,
+  type QuantumFrameTelemetry,
+  type QuantumInterpolationProfile,
+} from "../services/FrameGenerator";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,6 +61,7 @@ export interface VideoPlayerProps {
   onAnalytics?: (analytics: PlayerAnalytics) => void;
   onEnded?: () => void;
   className?: string;
+  quantumProfile?: Partial<QuantumInterpolationProfile>;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +85,27 @@ interface HlsStatic {
   isSupported(): boolean;
   Events: Record<string, string>;
 }
+
+interface NetworkInformationLike {
+  downlink?: number;
+}
+
+const DEFAULT_QUANTUM_PROFILE: QuantumInterpolationProfile = {
+  enabled: true,
+  sourceFrameRate: 30,
+  targetFrameRate: 120,
+  generatedFramesPerSecond: 90,
+  preferredRenderer: "webgpu-optical-flow",
+  frameHistorySize: 12,
+  telemetryIntervalMs: 500,
+  memoryBudgetMb: 128,
+  recovery: {
+    strategy: "optical-flow-bridge",
+    maxSyntheticSeconds: 8,
+    rejoinGraceMs: 800,
+    minBufferedSeconds: 1.5,
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -107,6 +138,7 @@ export default function VideoPlayer({
   onAnalytics,
   onEnded,
   className = "",
+  quantumProfile,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -114,6 +146,8 @@ export default function VideoPlayer({
   const analyticsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seekBarRef = useRef<HTMLInputElement>(null);
+  const quantumFrameGeneratorRef = useRef<QuantumFrameGenerator | null>(null);
+  const bitrateRecoveryRef = useRef<QuantumBitrateRecovery | null>(null);
 
   // Player state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -127,6 +161,8 @@ export default function VideoPlayer({
   const [showControls, setShowControls] = useState(true);
   const [isBuffering, setIsBuffering] = useState(false);
   const [seekPreviewTime, setSeekPreviewTime] = useState<number | null>(null);
+  const [quantumTelemetry, setQuantumTelemetry] = useState<QuantumFrameTelemetry | null>(null);
+  const [recoveryTelemetry, setRecoveryTelemetry] = useState<RecoveryTelemetry | null>(null);
 
   // Quality state
   const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
@@ -152,6 +188,18 @@ export default function VideoPlayer({
     side: "left",
     visible: false,
   });
+
+  const resolvedQuantumProfile = useMemo<QuantumInterpolationProfile>(
+    () => ({
+      ...DEFAULT_QUANTUM_PROFILE,
+      ...quantumProfile,
+      recovery: {
+        ...DEFAULT_QUANTUM_PROFILE.recovery,
+        ...quantumProfile?.recovery,
+      },
+    }),
+    [quantumProfile]
+  );
 
   // ---------------------------------------------------------------------------
   // HLS setup
@@ -235,6 +283,30 @@ export default function VideoPlayer({
     };
   }, [src, autoPlay, startTime]);
 
+  useEffect(() => {
+    const frameGenerator = new QuantumFrameGenerator(resolvedQuantumProfile);
+    const bitrateRecovery = new QuantumBitrateRecovery(resolvedQuantumProfile);
+    const unsubscribeFrameGenerator = frameGenerator.subscribe(setQuantumTelemetry);
+    const unsubscribeBitrateRecovery = bitrateRecovery.subscribe(setRecoveryTelemetry);
+
+    frameGenerator.setVideo(videoRef.current);
+    quantumFrameGeneratorRef.current = frameGenerator;
+    bitrateRecoveryRef.current = bitrateRecovery;
+
+    return () => {
+      unsubscribeFrameGenerator();
+      unsubscribeBitrateRecovery();
+      quantumFrameGeneratorRef.current?.dispose();
+      bitrateRecoveryRef.current?.dispose();
+      quantumFrameGeneratorRef.current = null;
+      bitrateRecoveryRef.current = null;
+    };
+  }, [resolvedQuantumProfile]);
+
+  useEffect(() => {
+    quantumFrameGeneratorRef.current?.setVideo(videoRef.current);
+  }, [src]);
+
   // ---------------------------------------------------------------------------
   // Video event handlers
   // ---------------------------------------------------------------------------
@@ -258,6 +330,21 @@ export default function VideoPlayer({
     if (duration > 0) {
       analyticsRef.current.completionRate = video.currentTime / duration;
     }
+
+    const currentLevel =
+      currentQuality >= 0 ? qualityLevels.find((level) => level.index === currentQuality) : qualityLevels[0];
+    const connection =
+      typeof navigator !== "undefined"
+        ? ((navigator as Navigator & { connection?: NetworkInformationLike }).connection ?? undefined)
+        : undefined;
+
+    bitrateRecoveryRef.current?.update({
+      bufferedAheadSeconds: getBufferedAhead(video),
+      buffering: isBuffering,
+      currentBitrateKbps: currentLevel ? Math.round(currentLevel.bitrate / 1000) : 2500,
+      playbackRate,
+      throughputKbps: connection?.downlink ? Math.round(connection.downlink * 1000) : undefined,
+    });
   }, [duration]);
 
   const handleDurationChange = useCallback(() => {
@@ -269,10 +356,12 @@ export default function VideoPlayer({
   const handleWaiting = useCallback(() => {
     setIsBuffering(true);
     analyticsRef.current.bufferingEvents += 1;
+    quantumFrameGeneratorRef.current?.setBuffering(true);
   }, []);
 
   const handleCanPlay = useCallback(() => {
     setIsBuffering(false);
+    quantumFrameGeneratorRef.current?.setBuffering(false);
   }, []);
 
   const handleEnded = useCallback(() => {
@@ -530,6 +619,13 @@ export default function VideoPlayer({
     return qualityLevels.find((q) => q.index === currentQuality)?.label ?? "Auto";
   }, [currentQuality, qualityLevels]);
 
+  const quantumStatusLabel = useMemo(() => {
+    if (!quantumTelemetry?.active) return "Audio continuity";
+    if (recoveryTelemetry?.status === "recovering") return "Recovery bridge active";
+    if (recoveryTelemetry?.status === "protecting") return "Guarding playback";
+    return "Interpolation stable";
+  }, [quantumTelemetry, recoveryTelemetry]);
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -551,6 +647,60 @@ export default function VideoPlayer({
         className="w-full h-full object-contain"
         aria-label={title ?? "Video player"}
       />
+
+      {(quantumTelemetry || recoveryTelemetry) && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            display: "grid",
+            gap: 6,
+            maxWidth: 240,
+            padding: "10px 12px",
+            borderRadius: 12,
+            background: "rgba(5, 10, 30, 0.72)",
+            border: "1px solid rgba(120, 119, 255, 0.28)",
+            color: "#fff",
+            pointerEvents: "none",
+            backdropFilter: "blur(10px)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <strong style={{ fontSize: 12, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              Quantum Playback
+            </strong>
+            <span
+              style={{
+                fontSize: 10,
+                padding: "2px 6px",
+                borderRadius: 999,
+                background:
+                  recoveryTelemetry?.status === "recovering"
+                    ? "rgba(244, 114, 182, 0.22)"
+                    : "rgba(34, 197, 94, 0.22)",
+              }}
+            >
+              {quantumStatusLabel}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.9 }}>
+            {(quantumTelemetry?.measuredSourceFrameRate ?? resolvedQuantumProfile.sourceFrameRate).toFixed(1)} fps →{" "}
+            {quantumTelemetry?.targetFrameRate ?? resolvedQuantumProfile.targetFrameRate} fps
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.78 }}>
+            Renderer: {formatRendererLabel(quantumTelemetry?.renderer ?? resolvedQuantumProfile.preferredRenderer)}
+            {quantumTelemetry?.webgpuSupported ? " · WebGPU ready" : " · GPU fallback"}
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.78 }}>
+            Synthetic frames: {Math.round(quantumTelemetry?.syntheticFramesPerSecond ?? 0)} / sec
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.78 }}>
+            Recovery window: {recoveryTelemetry?.plan.syntheticCoverageSeconds ?? 0}s · pressure{" "}
+            {quantumTelemetry?.bufferPressure ?? "nominal"}
+          </div>
+        </div>
+      )}
 
       {/* Buffering spinner */}
       <AnimatePresence>
@@ -877,4 +1027,27 @@ export default function VideoPlayer({
       <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
     </div>
   );
+}
+
+function getBufferedAhead(video: HTMLVideoElement): number {
+  const { buffered, currentTime } = video;
+  for (let i = 0; i < buffered.length; i += 1) {
+    const start = buffered.start(i);
+    const end = buffered.end(i);
+    if (currentTime >= start && currentTime <= end) {
+      return Math.max(0, end - currentTime);
+    }
+  }
+  return 0;
+}
+
+function formatRendererLabel(renderer: QuantumInterpolationProfile["preferredRenderer"]): string {
+  switch (renderer) {
+    case "webgpu-optical-flow":
+      return "WebGPU optical flow";
+    case "webgl-motion-fallback":
+      return "WebGL fallback";
+    case "audio-only":
+      return "Audio-only bridge";
+  }
 }

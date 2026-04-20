@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import logger from "../logger";
 import { cache } from "../services/cache";
+import { buildQuantumInterpolationPlan } from "../services/QuantumInterpolationService";
 
 const router = Router();
 
@@ -152,6 +153,11 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
       targetSyncOffsetMs: 100,
       protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
     };
+    const quantumInterpolation = buildQuantumInterpolationPlan({
+      mode: resolvedMode,
+      engagementScore,
+      selectedResolution: tier.resolution,
+    });
     logger.info(
       { mediaId, userId, engagementScore, mode: resolvedMode, resolution: tier.resolution, cacheHit: true },
       "Stream tier selected (cache hit)"
@@ -166,6 +172,7 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
       engagementScore,
       mode: resolvedMode,
       syncMetadata,
+      quantumInterpolation,
       note: "HLS/DASH adaptive streaming stub – real CDN URL would be served here",
     });
     return;
@@ -188,6 +195,11 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
     targetSyncOffsetMs: 100,
     protocol: tier.resolution === "audio" ? "hls-audio-only" : "hls+dash",
   };
+  const quantumInterpolation = buildQuantumInterpolationPlan({
+    mode: resolvedMode,
+    engagementScore,
+    selectedResolution: tier.resolution,
+  });
 
   res.json({
     mediaId,
@@ -199,6 +211,7 @@ async function streamHandler(req: Request, res: Response): Promise<void> {
     engagementScore,
     mode: resolvedMode,
     syncMetadata,
+    quantumInterpolation,
     note: "HLS/DASH adaptive streaming stub – real CDN URL would be served here",
   });
 }
