@@ -199,6 +199,30 @@ export type {
   VideoMetaForRecommender,
 } from "./HybridRecommender";
 
+export {
+  mapContentToEmotionalVector,
+  buildPredictiveSequence,
+} from "./ContentSequencer";
+export type {
+  EmotionalAxis,
+  SequencerContentInput,
+  EmotionalVector,
+  SequencedContent,
+  SequenceOptions,
+} from "./ContentSequencer";
+
+export {
+  createSessionDepthState,
+  applySessionDepthEvent,
+  buildSessionDepthRecommendationSignal,
+} from "./SessionDepth";
+export type {
+  SessionRewardTier,
+  SessionDepthState,
+  SessionDepthEvent,
+  SessionDepthRecommendationSignal,
+} from "./SessionDepth";
+
 export * from "./AutoplayEngine";
 export * from "./WatchStreakService";
 export * from "./ExitIntentTrigger";

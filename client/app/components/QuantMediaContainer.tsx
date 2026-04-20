@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlaybackMode, useMedia } from "../context/MediaContext";
+import TransitionEngine from "./TransitionEngine";
 import styles from "./QuantMediaContainer.module.css";
 
 const QUANTTUBE_CONFIG = {
@@ -169,25 +170,63 @@ export default function QuantMediaContainer() {
           role="region"
           aria-label={`${modeLabel(state.mode)} player`}
         >
-          {state.mode === PlaybackMode.Cinema && <CinemaView />}
-          {state.mode === PlaybackMode.ShortReel && (
-            <ShortReelView
-              shareLoading={shareLoading}
-              shareError={shareError}
-              shareData={shareData}
-              dashboard={dashboard}
-              onShare={shareReelToQuantchat}
-              onRefreshDashboard={refreshDashboard}
-              onSimulateClick={simulateMemberClick}
-            />
-          )}
-          {state.mode === PlaybackMode.AudioOnly && (
-            <AudioOnlyView spectrumConfig={spectrumConfig} />
-          )}
+          <TransitionEngine
+            mode={state.mode}
+            activeSource={activeSourceByMode(state.mode)}
+            upcomingSources={upcomingSourcesByMode(state.mode)}
+            bridgeHint={transitionHintByMode(state.mode)}
+          >
+            {state.mode === PlaybackMode.Cinema && <CinemaView />}
+            {state.mode === PlaybackMode.ShortReel && (
+              <ShortReelView
+                shareLoading={shareLoading}
+                shareError={shareError}
+                shareData={shareData}
+                dashboard={dashboard}
+                onShare={shareReelToQuantchat}
+                onRefreshDashboard={refreshDashboard}
+                onSimulateClick={simulateMemberClick}
+              />
+            )}
+            {state.mode === PlaybackMode.AudioOnly && (
+              <AudioOnlyView spectrumConfig={spectrumConfig} />
+            )}
+          </TransitionEngine>
         </motion.div>
       </AnimatePresence>
     </div>
   );
+}
+
+function activeSourceByMode(mode: PlaybackMode): string {
+  if (mode === PlaybackMode.ShortReel) return "https://cdn.quanttube.app/reels/current.mp4";
+  if (mode === PlaybackMode.AudioOnly) return "https://cdn.quanttube.app/audio/current.m4a";
+  return "https://cdn.quanttube.app/cinema/current.m3u8";
+}
+
+function upcomingSourcesByMode(mode: PlaybackMode): string[] {
+  if (mode === PlaybackMode.ShortReel) {
+    return [
+      "https://cdn.quanttube.app/reels/next-1.mp4",
+      "https://cdn.quanttube.app/reels/next-2.mp4",
+    ];
+  }
+  if (mode === PlaybackMode.AudioOnly) {
+    return [
+      "https://cdn.quanttube.app/audio/next-1.m4a",
+      "https://cdn.quanttube.app/audio/next-2.m4a",
+    ];
+  }
+  return [
+    "https://cdn.quanttube.app/cinema/next-1.m3u8",
+    "https://cdn.quanttube.app/cinema/next-2.m3u8",
+  ];
+}
+
+function transitionHintByMode(mode: PlaybackMode): string {
+  if (mode === PlaybackMode.ShortReel) return "Bridge: fast visual continuity";
+  if (mode === PlaybackMode.AudioOnly) return "Bridge: low-latency audio handoff";
+  return "Bridge: cinematic crossfade preload";
 }
 
 /* ------------------------------------------------------------------ */
